@@ -22,10 +22,16 @@ KNOWN_ACCOUNT_P12_PASSWORDS: tuple[str, ...] = ()
 REMOTE_CTL_LOCK = "lock"
 REMOTE_CTL_UNLOCK = "unlock"
 REMOTE_CTL_TRUNK = "trunk"
+REMOTE_CTL_TRUNK_OPEN = "trunk_open"
+REMOTE_CTL_TRUNK_CLOSE = "trunk_close"
 REMOTE_CTL_FIND_CAR = "find_car"
 REMOTE_CTL_SUNSHADE = "sunshade"
+REMOTE_CTL_SUNSHADE_OPEN = "sunshade_open"
+REMOTE_CTL_SUNSHADE_CLOSE = "sunshade_close"
 REMOTE_CTL_BATTERY_PREHEAT = "battery_preheat"
 REMOTE_CTL_WINDOWS = "windows"
+REMOTE_CTL_WINDOWS_OPEN = "windows_open"
+REMOTE_CTL_WINDOWS_CLOSE = "windows_close"
 REMOTE_CTL_AC_SWITCH = "ac_switch"
 REMOTE_CTL_QUICK_COOL = "quick_cool"
 REMOTE_CTL_QUICK_HEAT = "quick_heat"
@@ -35,10 +41,16 @@ REMOTE_ACTION_SPECS: dict[str, RemoteActionSpec] = {
     REMOTE_CTL_UNLOCK: RemoteActionSpec(cmd_id="110", cmd_content='{"value":"unlock"}'),
     REMOTE_CTL_LOCK: RemoteActionSpec(cmd_id="110", cmd_content='{"value":"lock"}'),
     REMOTE_CTL_TRUNK: RemoteActionSpec(cmd_id="130", cmd_content='{"value":"true"}'),
+    REMOTE_CTL_TRUNK_OPEN: RemoteActionSpec(cmd_id="130", cmd_content='{"value":"true"}'),
+    REMOTE_CTL_TRUNK_CLOSE: RemoteActionSpec(cmd_id="130", cmd_content='{"value":"false"}'),
     REMOTE_CTL_FIND_CAR: RemoteActionSpec(cmd_id="120", cmd_content='{"value":"true"}'),
     REMOTE_CTL_SUNSHADE: RemoteActionSpec(cmd_id="240", cmd_content='{"value":"10"}'),
+    REMOTE_CTL_SUNSHADE_OPEN: RemoteActionSpec(cmd_id="240", cmd_content='{"value":"10"}'),
+    REMOTE_CTL_SUNSHADE_CLOSE: RemoteActionSpec(cmd_id="240", cmd_content='{"value":"0"}'),
     REMOTE_CTL_BATTERY_PREHEAT: RemoteActionSpec(cmd_id="160", cmd_content='{"value":"ptcon"}'),
     REMOTE_CTL_WINDOWS: RemoteActionSpec(cmd_id="230", cmd_content='{"value":"2"}'),
+    REMOTE_CTL_WINDOWS_OPEN: RemoteActionSpec(cmd_id="230", cmd_content='{"value":"2"}'),
+    REMOTE_CTL_WINDOWS_CLOSE: RemoteActionSpec(cmd_id="230", cmd_content='{"value":"0"}'),
     REMOTE_CTL_AC_SWITCH: RemoteActionSpec(
         cmd_id="170",
         cmd_content='{"circle":"out","mode":"nohotcold","operate":"manual","position":"all","temperature":"24","windlevel":"4","wshld":"1"}',
