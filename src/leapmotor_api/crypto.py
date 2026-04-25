@@ -328,6 +328,40 @@ def build_car_picture_headers(
     }
 
 
+def build_car_picture_package_headers(
+    *,
+    sign_key: bytes,
+    device_id: str,
+    picture_key: str,
+    language: str = DEFAULT_LANGUAGE,
+) -> dict[str, str]:
+    """Build the signature variant used by vehicle/v1/carpicture/package."""
+    nonce = str(random.randint(100000, 9999999))  # noqa: S311
+    timestamp = str(int(time.time() * 1000))
+    sign_input = (
+        f"{language}"
+        f"{DEFAULT_CHANNEL}"
+        f"{device_id}"
+        f"{DEFAULT_DEVICE_TYPE}"
+        f"{picture_key}"
+        f"{nonce}"
+        f"{DEFAULT_SOURCE}"
+        f"{timestamp}"
+        f"{DEFAULT_APP_VERSION}"
+    )
+    return {
+        "acceptLanguage": language,
+        "channel": DEFAULT_CHANNEL,
+        "deviceType": DEFAULT_DEVICE_TYPE,
+        "source": DEFAULT_SOURCE,
+        "version": DEFAULT_APP_VERSION,
+        "nonce": nonce,
+        "deviceId": device_id,
+        "timestamp": timestamp,
+        "sign": hmac.new(sign_key, sign_input.encode("utf-8"), hashlib.sha256).hexdigest(),
+    }
+
+
 def build_operpwd_verify_headers(
     *,
     sign_key: bytes,
