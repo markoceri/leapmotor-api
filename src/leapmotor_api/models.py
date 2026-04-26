@@ -91,6 +91,13 @@ class BatteryStatus:
     expected_mileage: int | None = None
 
     @property
+    def dump_energy_kwh(self) -> float | None:
+        """Available energy in kWh (raw ``dump_energy`` is in Wh)."""
+        if self.dump_energy is None:
+            return None
+        return round(self.dump_energy / 1000, 2)
+
+    @property
     def battery_power(self) -> float | None:
         """Battery power in kW, computed from voltage and current."""
         if self.battery_voltage is None or self.battery_current is None:
