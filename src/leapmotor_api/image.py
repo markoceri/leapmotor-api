@@ -136,6 +136,34 @@ class CarImagePackage:
         """Return the complete car preview image, if available."""
         return self._images.get("carpic_for_tripsum.png")
 
+    def _composite_layers(
+        self, layer_names: list[str],
+    ) -> Image.Image:
+        """Composite the given layers into a single RGBA canvas."""
+        body = self._images.get("carpic_body.png")
+        if body is None:
+            raise ValueError("Package missing carpic_body.png")
+
+        canvas = Image.new("RGBA", body.size, (0, 0, 0, 0))
+        for name in layer_names:
+            layer = self._images.get(name)
+            if layer is None:
+                continue
+            canvas = Image.alpha_composite(canvas, layer)
+        return canvas
+
+    @staticmethod
+    def _export(canvas: Image.Image, fmt: str = "PNG") -> bytes:
+        """Export a canvas to bytes in the requested format."""
+        buf = io.BytesIO()
+        if fmt.upper() == "JPEG":
+            rgb = Image.new("RGB", canvas.size, (0, 0, 0))
+            rgb.paste(canvas, mask=canvas.split()[3])
+            rgb.save(buf, format="JPEG", quality=90)
+        else:
+            canvas.save(buf, format=fmt.upper())
+        return buf.getvalue()
+
     def compose(
         self,
         status: VehicleStatus | None = None,
@@ -157,33 +185,60 @@ class CarImagePackage:
 
         # If charging and a specific frame is requested, swap the default frame
         if status and status.battery.is_charging and 1 <= charge_frame <= 15:
-            # Replace carpic_charge1.png with the requested frame
             for i, name in enumerate(layer_names):
                 if name == "carpic_charge1.png":
                     layer_names[i] = f"carpic_charge{charge_frame}.png"
                     break
 
-        # Find the canvas size from the body image
-        body = self._images.get("carpic_body.png")
-        if body is None:
-            raise ValueError("Package missing carpic_body.png")
+        canvas = self._composite_layers(layer_names)
+        return self._export(canvas, format)
 
-        canvas = Image.new("RGBA", body.size, (0, 0, 0, 0))
+    def compose_animated(
+        self,
+        status: VehicleStatus | None = None,
+        *,
+        frame_duration: int = 200,
+    ) -> tuple[bytes, str]:
+        """Composite the car image; return animated WebP when charging, static PNG otherwise.
 
-        for name in layer_names:
-            layer = self._images.get(name)
-            if layer is None:
-                continue
-            # All layers are the same size — alpha-composite directly
-            canvas = Image.alpha_composite(canvas, layer)
+        Args:
+            status: Current vehicle status.
+            frame_duration: Milliseconds per frame for charging animation.
 
-        # Convert and export
+        Returns:
+            Tuple of ``(image_bytes, media_type)``.
+            ``media_type`` is ``"image/webp"`` when animated,
+            ``"image/png"`` when static.
+        """
+        if not (status and status.battery.is_charging):
+            return self.compose(status), "image/png"
+
+        # Build the base canvas without the animated charge-level layer
+        layer_names = _build_layer_list(status)
+        base_layers = [
+            n for n in layer_names
+            if not n.startswith("carpic_charge") or n == "carpic_charge_open.png"
+        ]
+        base_canvas = self._composite_layers(base_layers)
+
+        # Generate 15 frames, each overlaying a different charge level
+        frames: list[Image.Image] = []
+        for i in range(1, 16):
+            charge_layer = self._images.get(f"carpic_charge{i}.png")
+            if charge_layer:
+                frame = Image.alpha_composite(base_canvas, charge_layer)
+            else:
+                frame = base_canvas.copy()
+            frames.append(frame)
+
         buf = io.BytesIO()
-        if format.upper() == "JPEG":
-            # JPEG doesn't support alpha
-            rgb = Image.new("RGB", canvas.size, (0, 0, 0))
-            rgb.paste(canvas, mask=canvas.split()[3])
-            rgb.save(buf, format="JPEG", quality=90)
-        else:
-            canvas.save(buf, format=format.upper())
-        return buf.getvalue()
+        frames[0].save(
+            buf,
+            format="WEBP",
+            save_all=True,
+            append_images=frames[1:],
+            duration=frame_duration,
+            loop=0,
+            lossless=True,
+        )
+        return buf.getvalue(), "image/webp"
