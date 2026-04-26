@@ -91,6 +91,13 @@ class BatteryStatus:
     expected_mileage: int | None = None
 
     @property
+    def battery_power(self) -> float | None:
+        """Battery power in kW, computed from voltage and current."""
+        if self.battery_voltage is None or self.battery_current is None:
+            return None
+        return round(abs(self.battery_voltage * self.battery_current) / 1000, 2)
+
+    @property
     def is_charging(self) -> bool | None:
         """True if the vehicle is currently charging."""
         if self.charge_state is None:
