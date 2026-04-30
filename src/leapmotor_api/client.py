@@ -1,13 +1,4 @@
-"""Leapmotor cloud API client.
-
-Refactored from the original api.py to:
-- Use ``requests.Session`` with native mTLS instead of subprocess + curl
-- Enable TLS certificate verification (fix: SECURITY_AUDIT #1)
-- Secure temporary cert files with ``0o600`` permissions (fix: #3)
-- Log response bodies at DEBUG level only (fix: #4)
-- Generate unique device_id per instance (fix: #9)
-- Add HTTP timeout to all requests (fix: #2 partial)
-"""
+"""Leapmotor cloud API client."""
 
 from __future__ import annotations
 
