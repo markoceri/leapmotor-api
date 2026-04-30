@@ -8,10 +8,11 @@ FastAPI, etc.).
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from .client import LeapmotorApiClient
-from .models import Vehicle, VehicleStatus
+if TYPE_CHECKING:
+    from .client import LeapmotorApiClient
+    from .models import Vehicle, VehicleStatus
 
 
 class AsyncLeapmotorApiClient:

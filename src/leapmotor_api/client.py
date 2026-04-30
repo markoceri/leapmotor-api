@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import json
 import logging
 import os
@@ -32,12 +33,11 @@ from .const import (
     REMOTE_CTL_SUNSHADE_OPEN,
     REMOTE_CTL_TRUNK,
     REMOTE_CTL_TRUNK_CLOSE,
-    REMOTE_CTL_TRUNK_OPEN,
     REMOTE_CTL_UNLOCK,
-    REMOTE_CTL_WINDSHIELD_DEFROST,
     REMOTE_CTL_WINDOWS,
     REMOTE_CTL_WINDOWS_CLOSE,
     REMOTE_CTL_WINDOWS_OPEN,
+    REMOTE_CTL_WINDSHIELD_DEFROST,
 )
 from .crypto import (
     build_car_picture_headers,
@@ -131,10 +131,8 @@ class LeapmotorApiClient:
     def _clear_account_cert_files(self) -> None:
         for file_name in (self.account_cert_file, self.account_key_file):
             if file_name:
-                try:
+                with contextlib.suppress(OSError):
                     Path(file_name).unlink(missing_ok=True)
-                except OSError:
-                    pass
         self.account_cert_file = None
         self.account_key_file = None
 
@@ -251,7 +249,9 @@ class LeapmotorApiClient:
     def get_vehicle_raw_status(self, vehicle: Vehicle) -> dict[str, Any]:
         """Fetch raw status dict for one vehicle (for debug / forward-compatibility)."""
         car_type_path = vehicle.car_type.lower()
-        headers = build_signed_headers(sign_key=self.sign_key, device_id=self.device_id, vin=vehicle.vin, language=self.language)
+        headers = build_signed_headers(
+            sign_key=self.sign_key, device_id=self.device_id, vin=vehicle.vin, language=self.language
+        )
         headers.update(self._auth_headers(content_type="application/x-www-form-urlencoded"))
         response = self._post(
             path=f"/carownerservice/oversea/vehicle/v1/status/get/{car_type_path}",
@@ -263,7 +263,9 @@ class LeapmotorApiClient:
 
     def get_mileage_energy_detail(self, vehicle: Vehicle) -> dict[str, Any]:
         """Fetch read-only mileage and energy history summary."""
-        headers = build_signed_headers(sign_key=self.sign_key, device_id=self.device_id, vin=vehicle.vin, language=self.language)
+        headers = build_signed_headers(
+            sign_key=self.sign_key, device_id=self.device_id, vin=vehicle.vin, language=self.language
+        )
         headers.update(self._auth_headers(content_type="application/x-www-form-urlencoded"))
         response = self._post(
             path="/carownerservice/oversea/drivingRecord/v1/mileage/energy/detail",
@@ -275,7 +277,9 @@ class LeapmotorApiClient:
 
     def get_car_picture(self, vehicle: Vehicle) -> dict[str, Any]:
         """Fetch read-only car picture metadata."""
-        headers = build_car_picture_headers(sign_key=self.sign_key, device_id=self.device_id, vin=vehicle.vin, language=self.language)
+        headers = build_car_picture_headers(
+            sign_key=self.sign_key, device_id=self.device_id, vin=vehicle.vin, language=self.language
+        )
         headers.update(self._auth_headers(content_type="application/x-www-form-urlencoded"))
         body = (
             f"deviceID={quote(self.device_id, safe='')}"
@@ -421,7 +425,7 @@ class LeapmotorApiClient:
             raise LeapmotorApiError(
                 f"car picture package failed with HTTP {response['status_code']}"
             )
-        return response["body"]
+        return bytes(response["body"])
 
     # ------------------------------------------------------------------
     # Private — Data fetching
@@ -446,10 +450,11 @@ class LeapmotorApiClient:
 
     def _fetch_optional_read(self, label: str, fetcher: Any, vehicle: Vehicle) -> dict[str, Any] | None:
         try:
-            return fetcher(vehicle)
+            result: dict[str, Any] = fetcher(vehicle)
         except LeapmotorApiError as exc:
             _LOGGER.debug("Leapmotor optional read failed for %s: %s", label, exc)
             return None
+        return result
 
     # ------------------------------------------------------------------
     # Private — Remote control
@@ -769,7 +774,7 @@ class LeapmotorApiClient:
 
     def _parse_api_body(self, status_code: int, body: str, label: str) -> dict[str, Any]:
         try:
-            data = json.loads(body)
+            data: dict[str, Any] = json.loads(body)
         except ValueError as exc:
             self._record_api_result(label, status_code=status_code, code=None, message="non_json")
             raise LeapmotorApiError(f"{label} returned non-JSON response: {body[:200]}") from exc

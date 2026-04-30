@@ -15,7 +15,6 @@ import hmac
 import json
 import random
 import time
-from typing import Any
 
 from cryptography.hazmat.primitives import hashes, padding, serialization
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -206,7 +205,7 @@ def derive_session_device_id(token: str | None, fallback_device_id: str) -> str:
         parts = user_name.split(",")
         if len(parts) >= 4 and parts[2]:
             return parts[2]
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001, S110
         pass
     return fallback_device_id
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import hmac
 
 from leapmotor_api.crypto import (
     build_login_headers,

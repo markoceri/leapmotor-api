@@ -7,7 +7,7 @@ import os
 import tempfile
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -27,7 +27,6 @@ from leapmotor_api.exceptions import (
     LeapmotorMissingAppCertError,
 )
 from leapmotor_api.models import Vehicle
-
 
 # ---------------------------------------------------------------------------
 # Helpers

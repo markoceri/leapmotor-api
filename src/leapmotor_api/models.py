@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -353,10 +354,8 @@ class VehicleStatus:
         for api_key, field_name in (("collectTime", "collect_time"), ("createTime", "create_time")):
             raw_ts = status_data.get(api_key)
             if isinstance(raw_ts, str):
-                try:
-                    timestamps[field_name] = datetime.strptime(raw_ts, _DATETIME_FMT)
-                except ValueError:
-                    pass
+                with contextlib.suppress(ValueError):
+                    timestamps[field_name] = datetime.strptime(raw_ts, _DATETIME_FMT)  # noqa: DTZ007
 
         return cls(
             battery=BatteryStatus(**_extract_fields(status_data, _BATTERY_FIELDS)),
@@ -385,7 +384,7 @@ class VehicleStatus:
         return self.battery.is_charging
 
     @property
-    def is_parked(self) -> bool:
+    def is_parked(self) -> bool | None:
         """True if the vehicle is stationary."""
         return self.driving.is_parked
 

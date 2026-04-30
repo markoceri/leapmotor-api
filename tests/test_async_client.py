@@ -6,9 +6,7 @@ import asyncio
 import os
 import tempfile
 from typing import Any
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from leapmotor_api.async_client import AsyncLeapmotorApiClient
 from leapmotor_api.client import LeapmotorApiClient

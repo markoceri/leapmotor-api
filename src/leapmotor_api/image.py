@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import io
 import zipfile
-from typing import Any
+from typing import TYPE_CHECKING
 
-from .models import VehicleStatus
+if TYPE_CHECKING:
+    from .models import VehicleStatus
 
 try:
     from PIL import Image
@@ -169,7 +170,7 @@ class CarImagePackage:
         status: VehicleStatus | None = None,
         *,
         charge_frame: int = 1,
-        format: str = "PNG",
+        format: str = "PNG",  # noqa: A002
     ) -> bytes:
         """Composite the car image layers based on vehicle status.
 
@@ -225,10 +226,7 @@ class CarImagePackage:
         frames: list[Image.Image] = []
         for i in range(1, 16):
             charge_layer = self._images.get(f"carpic_charge{i}.png")
-            if charge_layer:
-                frame = Image.alpha_composite(base_canvas, charge_layer)
-            else:
-                frame = base_canvas.copy()
+            frame = Image.alpha_composite(base_canvas, charge_layer) if charge_layer else base_canvas.copy()
             frames.append(frame)
 
         buf = io.BytesIO()
