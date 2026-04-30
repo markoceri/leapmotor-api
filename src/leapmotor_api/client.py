@@ -759,6 +759,7 @@ def normalize_vehicle(
     charge_plan = config.get("3") or {}
     mileage_data = (mileage_json or {}).get("data") or {}
     picture_data = (picture_json or {}).get("data") or {}
+    vehicle_state = _derive_vehicle_state(signal)
 
     return {
         "vehicle": {
@@ -777,10 +778,10 @@ def normalize_vehicle(
             "battery_percent": signal.get("1204"),
             "remaining_range_km": signal.get("3260"),
             "odometer_km": signal.get("1318"),
-            "is_locked": signal.get("47") == 0 if signal.get("47") is not None else None,
+            "is_locked": _safe_int(signal.get("47")) == 0 if signal.get("47") is not None else None,
             "raw_lock_status_code": signal.get("47"),
-            "is_parked": signal.get("1298") == 1 if signal.get("1298") is not None else None,
-            "vehicle_state": _derive_vehicle_state(signal),
+            "is_parked": vehicle_state == "parked" if vehicle_state is not None else None,
+            "vehicle_state": vehicle_state,
             "vehicle_state_source": "raw_signal",
             "raw_charge_status_code": signal.get("1939"),
             "raw_drive_status_code": signal.get("1941"),
@@ -796,10 +797,15 @@ def normalize_vehicle(
             "longitude": signal.get("3724", signal.get("2191")),
             "privacy_gps": status_data.get("privacyGPS"),
             "privacy_data": status_data.get("privacyData"),
+            "last_vehicle_timestamp": signal.get("sts"),
         },
         "charging": {
             "is_charging": _is_charging(signal),
             "charge_limit_percent": charge_plan.get("percent"),
+            "remaining_charge_minutes": _safe_int(signal.get("1200")),
+            "charging_power_kw": _charging_power_kw(signal),
+            "charging_current_a": _safe_float(signal.get("1178")),
+            "charging_voltage_v": _safe_float(signal.get("1177")),
             "charging_planned_enabled": charge_plan.get("isEnable"),
             "charging_planned_start": charge_plan.get("beginTime"),
             "charging_planned_end": charge_plan.get("endTime"),
@@ -813,8 +819,10 @@ def normalize_vehicle(
             "delivery_days": mileage_data.get("deliveryDays"),
         },
         "media": {
-            "car_picture_status": "available" if picture_data.get("shareBindUrl") else "unavailable",
+            "car_picture_status": "available" if picture_data.get("key") else "unavailable",
             "car_picture_url": picture_data.get("shareBindUrl"),
+            "car_picture_key": picture_data.get("key"),
+            "car_picture_whole": picture_data.get("whole"),
             "car_picture_key_present": bool(picture_data.get("key")),
             "car_picture_whole_present": bool(picture_data.get("whole")),
         },
