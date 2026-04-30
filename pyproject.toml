@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "leapmotor-api"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Unofficial Python client for the Leapmotor vehicle cloud API"
 readme = "README.md"
 license = "MIT"
@@ -43,6 +43,9 @@ dev = [
 [project.urls]
 Homepage = "https://github.com/markoceri/leapmotor-api"
 Issues = "https://github.com/markoceri/leapmotor-api/issues"
+
+[tool.hatch.version]
+path = "src/leapmotor_api/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/leapmotor_api"]
