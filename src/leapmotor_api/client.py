@@ -868,20 +868,20 @@ def _to_bar(raw: Any) -> float | None:
 
 
 def _derive_vehicle_state(signal: dict[str, Any]) -> str | None:
-    parked = signal.get("1298")
-    charge_status = signal.get("1939")
-    vehicle_state = signal.get("1944")
-
-    if _is_charging(signal):
-        return "charging"
+    """Return the movement state independent from charging state."""
+    parked = _safe_int(signal.get("1298"))
     if parked == 1:
         return "parked"
     if parked == 0:
         return "driving"
-    if vehicle_state in (0, 3):
+
+    drive_status = _safe_int(signal.get("1941"))
+    vehicle_state = _safe_int(signal.get("1944"))
+    if drive_status in (1, 2, 4) or vehicle_state in (0, 1, 3):
         return "parked"
-    if charge_status == 0:
-        return "parked"
+    if drive_status in (3, 5) or vehicle_state in (2, 4, 5):
+        return "driving"
+
     return None
 
 
