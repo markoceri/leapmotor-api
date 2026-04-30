@@ -138,9 +138,11 @@ class DrivingStatus:
     gear_status: int | None = None
 
     @property
-    def is_parked(self) -> bool:
+    def is_parked(self) -> bool | None:
         """True if the vehicle is stationary."""
-        return (self.speed or 0) == 0
+        if self.speed is None:
+            return None
+        return self.speed == 0
 
 
 @dataclass(slots=True)
