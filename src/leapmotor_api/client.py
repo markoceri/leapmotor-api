@@ -382,6 +382,35 @@ class LeapmotorApiClient:
             vehicle=vehicle,
         )
 
+    def send_destination(
+        self,
+        vin: str,
+        *,
+        address: str,
+        address_name: str,
+        latitude: float,
+        longitude: float,
+    ) -> dict[str, Any]:
+        """Send a navigation destination to the vehicle (does not require PIN)."""
+        vehicle = self._find_vehicle_by_vin(vin)
+        cmd_content = json.dumps(
+            {
+                "address": address,
+                "addressname": address_name,
+                "latitude": str(latitude),
+                "linenum": "0",
+                "longitude": str(longitude),
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        return self._remote_control_without_pin_raw(
+            vin=vehicle.vin,
+            cmd_id="180",
+            cmd_content=cmd_content,
+            action_label="send_destination",
+        )
+
     def download_car_picture_package(self, *, picture_key: str) -> bytes:
         """Download the picture package ZIP for one already-resolved picture key."""
         headers = build_car_picture_package_headers(
