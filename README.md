@@ -29,13 +29,78 @@ client = LeapmotorApiClient(
 )
 
 client.login()
-data = client.fetch_data()
+vehicles = client.get_vehicle_list()
 
-for vin, vehicle in data["vehicles"].items():
-    print(f"{vin}: {vehicle['status']['battery_percent']}% battery")
+for vehicle in vehicles:
+    print(f"{vehicle.vin} ({vehicle.car_type}) — {vehicle.nickname}")
+    status = client.get_vehicle_status(vehicle)
+    print(f"  Battery: {status.battery.soc}%")
+    print(f"  Range: {status.battery.expected_mileage} km")
+    print(f"  Odometer: {status.driving.total_mileage} km")
 
 client.close()
 ```
+
+## Typed Models vs Raw Data
+
+The library exposes two ways to access vehicle data:
+
+### Typed models (recommended)
+
+`get_vehicle_status()` returns a `VehicleStatus` dataclass with typed sub-objects:
+
+```python
+status = client.get_vehicle_status(vehicle)
+
+# Battery & charging
+status.battery.soc                  # int | None — state of charge %
+status.battery.expected_mileage     # int | None — remaining range km
+status.battery.is_charging          # bool | None
+status.battery.charging_power_kw    # float | None
+status.battery.dump_energy_kwh      # float | None — available energy in kWh
+
+# Driving
+status.driving.total_mileage        # int | None — odometer km
+status.driving.speed                # int | None
+status.driving.is_parked            # bool | None
+
+# Location
+status.location.latitude            # float | None
+status.location.longitude           # float | None
+
+# Climate
+status.climate.ac_switch            # bool | None
+status.climate.outdoor_temp         # int | None
+
+# Doors & locks
+status.doors.is_locked              # bool | None
+
+# Windows
+status.windows.left_front_window_percent   # int | None
+
+# Tire pressure
+status.tires.front_left_bar         # float | None — pressure in bar
+status.tires.all_ok                 # bool | None — all pressures normal
+
+# Connectivity
+status.connectivity.bluetooth_state # bool | None
+
+# Timestamps
+status.collect_time                 # datetime | None
+```
+
+### Raw API data
+
+For forward-compatibility or debugging, use `get_vehicle_raw_status()`:
+
+```python
+raw = client.get_vehicle_raw_status(vehicle)
+# Returns the full API JSON dict with signal codes, config, etc.
+# raw["data"]["signal"]["1204"]  → battery SOC
+# raw["data"]["config"]["3"]     → charging plan
+```
+
+The `VehicleStatus` object also retains the raw dict in `status.raw` for convenience.
 
 ## Async Usage
 
@@ -53,7 +118,8 @@ sync_client = LeapmotorApiClient(
 client = AsyncLeapmotorApiClient(sync_client)
 
 await client.login()
-data = await client.fetch_data()
+vehicles = await client.get_vehicle_list()
+status = await client.get_vehicle_status(vehicles[0])
 await client.close()
 ```
 
@@ -75,6 +141,18 @@ client.login()
 client.lock_vehicle("WLM...")
 client.unlock_vehicle("WLM...")
 client.open_trunk("WLM...")
+client.close_trunk("WLM...")
+client.find_vehicle("WLM...")
+client.open_windows("WLM...")
+client.close_windows("WLM...")
+client.ac_switch("WLM...")
+client.quick_cool("WLM...")
+client.quick_heat("WLM...")
+client.windshield_defrost("WLM...")
+client.open_sunshade("WLM...")
+client.close_sunshade("WLM...")
+client.battery_preheat("WLM...")
+client.set_charge_limit("WLM...", charge_limit_percent=80)
 client.close()
 ```
 
