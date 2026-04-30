@@ -115,10 +115,18 @@ class BatteryStatus:
 
     @property
     def is_charging(self) -> bool | None:
-        """True if the vehicle is currently charging."""
+        """True if the vehicle is currently charging (3-level detection)."""
+        # Level 1: current + remaining time both available
+        if self.battery_current is not None and self.charge_remain_time is not None:
+            return abs(self.battery_current) >= 1.0
+        # Level 2: power (with min-current threshold) available
+        power = self.charging_power_kw
+        if power is not None:
+            return power >= 1.0 and self.charge_remain_time is not None
+        # Level 3: legacy fallback using charge_state
         if self.charge_state is None:
             return None
-        return self.charge_state != 0
+        return self.charge_state in (1, 2, 3) and self.charge_remain_time is not None
 
 
 @dataclass(slots=True)
