@@ -13,6 +13,7 @@ import pytest
 
 from leapmotor_api.client import (
     LeapmotorApiClient,
+    _charging_power_kw,
     _derive_vehicle_state,
     _is_charging,
     _safe_float,
@@ -246,3 +247,346 @@ class TestIsCharging:
     def test_not_charging(self) -> None:
         assert _is_charging({"1939": 0}) is False
         assert _is_charging({}) is False
+
+
+# ---------------------------------------------------------------------------
+# Charging power helper
+# ---------------------------------------------------------------------------
+
+
+class TestChargingPowerKw:
+    def test_valid_power(self) -> None:
+        # 400V * 10A = 4000W = 4.0 kW
+        assert _charging_power_kw({"1178": 10.0, "1177": 400.0}) == 4.0
+
+    def test_negative_current(self) -> None:
+        # abs(-10) * 400 = 4000W = 4.0 kW
+        assert _charging_power_kw({"1178": -10.0, "1177": 400.0}) == 4.0
+
+    def test_low_current_returns_none(self) -> None:
+        assert _charging_power_kw({"1178": 2.0, "1177": 400.0}) is None
+
+    def test_missing_current_returns_none(self) -> None:
+        assert _charging_power_kw({"1177": 400.0}) is None
+
+    def test_missing_voltage_returns_none(self) -> None:
+        assert _charging_power_kw({"1178": 10.0}) is None
+
+    def test_empty_signal_returns_none(self) -> None:
+        assert _charging_power_kw({}) is None
+
+
+# ---------------------------------------------------------------------------
+# Normalize vehicle — additional edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestNormalizeVehicleExtended:
+
+    def _vehicle(self) -> Vehicle:
+        return Vehicle(
+            vin="WLMTEST123",
+            car_id="42",
+            car_type="C10",
+            nickname="MyCar",
+            is_shared=False,
+            year=2024,
+        )
+
+    def test_charging_info(self) -> None:
+        status_json: dict[str, Any] = {
+            "data": {
+                "signal": {"1178": 10.0, "1177": 400.0, "1200": 60, "1204": 50},
+                "config": {
+                    "3": {
+                        "percent": 80,
+                        "isEnable": 1,
+                        "beginTime": "22:00",
+                        "endTime": "06:00",
+                        "cycles": "1,2,3,4,5,6,7",
+                        "circulation": 1,
+                        "updateTime": "2024-01-01 00:00:00",
+                    }
+                },
+            }
+        }
+        result = normalize_vehicle(self._vehicle(), status_json, "user1")
+        assert result["charging"]["is_charging"] is True
+        assert result["charging"]["charge_limit_percent"] == 80
+        assert result["charging"]["remaining_charge_minutes"] == 60
+        assert result["charging"]["charging_power_kw"] == 4.0
+        assert result["charging"]["charging_current_a"] == 10.0
+        assert result["charging"]["charging_voltage_v"] == 400.0
+        assert result["charging"]["charging_planned_enabled"] == 1
+        assert result["charging"]["charging_planned_start"] == "22:00"
+        assert result["charging"]["charging_planned_end"] == "06:00"
+
+    def test_diagnostics_tire_pressure(self) -> None:
+        status_json: dict[str, Any] = {
+            "data": {
+                "signal": {
+                    "2667": 250,
+                    "2653": 255,
+                    "2646": 260,
+                    "2660": 245,
+                },
+                "config": {},
+            }
+        }
+        result = normalize_vehicle(self._vehicle(), status_json, "user1")
+        assert result["diagnostics"]["tire_pressure_front_left_bar"] == 2.5
+        assert result["diagnostics"]["tire_pressure_front_right_bar"] == 2.55
+        assert result["diagnostics"]["tire_pressure_rear_left_bar"] == 2.6
+        assert result["diagnostics"]["tire_pressure_rear_right_bar"] == 2.45
+
+    def test_location_fallback_coordinates(self) -> None:
+        """Should fall back to signal 2190/2191 if 3725/3724 not present."""
+        status_json: dict[str, Any] = {
+            "data": {
+                "signal": {"2190": 45.123, "2191": 7.456},
+                "config": {},
+            }
+        }
+        result = normalize_vehicle(self._vehicle(), status_json, "user1")
+        assert result["location"]["latitude"] == 45.123
+        assert result["location"]["longitude"] == 7.456
+
+    def test_location_primary_coordinates(self) -> None:
+        """Primary coordinates (3725/3724) take precedence."""
+        status_json: dict[str, Any] = {
+            "data": {
+                "signal": {"3725": 46.0, "3724": 8.0, "2190": 45.0, "2191": 7.0},
+                "config": {},
+            }
+        }
+        result = normalize_vehicle(self._vehicle(), status_json, "user1")
+        assert result["location"]["latitude"] == 46.0
+        assert result["location"]["longitude"] == 8.0
+
+    def test_vehicle_abilities_empty(self) -> None:
+        v = Vehicle(
+            vin="VIN1", car_id="1", car_type="C10",
+            nickname="N", is_shared=False, abilities=None,
+        )
+        result = normalize_vehicle(v, {}, "user1")
+        assert result["vehicle"]["abilities"] == []
+
+    def test_vehicle_abilities_populated(self) -> None:
+        v = Vehicle(
+            vin="VIN1", car_id="1", car_type="C10",
+            nickname="N", is_shared=False, abilities=["remote", "charge"],
+        )
+        result = normalize_vehicle(v, {}, "user1")
+        assert result["vehicle"]["abilities"] == ["remote", "charge"]
+
+    def test_raw_updated_at_present(self) -> None:
+        result = normalize_vehicle(self._vehicle(), {}, "user1")
+        assert "raw_updated_at" in result
+        assert isinstance(result["raw_updated_at"], float)
+
+
+# ---------------------------------------------------------------------------
+# Client — _parse_api_body
+# ---------------------------------------------------------------------------
+
+
+class TestParseApiBody:
+    def test_success(self) -> None:
+        client = _make_client()
+        body = json.dumps({"code": 0, "message": "success", "data": {"id": 1}})
+        result = client._parse_api_body(200, body, "test")
+        assert result["code"] == 0
+        assert result["data"]["id"] == 1
+        client.close()
+
+    def test_non_json_raises(self) -> None:
+        client = _make_client()
+        with pytest.raises(LeapmotorApiError, match="non-JSON"):
+            client._parse_api_body(200, "not json", "test")
+        client.close()
+
+    def test_http_error_raises(self) -> None:
+        client = _make_client()
+        body = json.dumps({"code": 500, "message": "internal error"})
+        with pytest.raises(LeapmotorApiError, match="internal error"):
+            client._parse_api_body(500, body, "test")
+        client.close()
+
+    def test_api_code_nonzero_raises(self) -> None:
+        client = _make_client()
+        body = json.dumps({"code": 1001, "message": "token expired"})
+        with pytest.raises(LeapmotorApiError, match="token expired"):
+            client._parse_api_body(200, body, "test")
+        client.close()
+
+    def test_login_failure_raises_auth_error(self) -> None:
+        client = _make_client()
+        body = json.dumps({"code": 401, "message": "invalid credentials"})
+        with pytest.raises(LeapmotorAuthError, match="login failed"):
+            client._parse_api_body(200, body, "login")
+        client.close()
+
+    def test_remote_verify_failure_raises_auth_error(self) -> None:
+        client = _make_client()
+        body = json.dumps({"code": 403, "message": "pin wrong"})
+        with pytest.raises(LeapmotorAuthError, match="remote verify failed"):
+            client._parse_api_body(200, body, "remote verify")
+        client.close()
+
+    def test_records_api_result(self) -> None:
+        client = _make_client()
+        body = json.dumps({"code": 0, "message": "ok"})
+        client._parse_api_body(200, body, "test_label")
+        assert "test_label" in client.last_api_results
+        assert client.last_api_results["test_label"]["code"] == 0
+        assert client.last_api_results["test_label"]["http_status"] == 200
+        client.close()
+
+
+# ---------------------------------------------------------------------------
+# Client — Remote control errors
+# ---------------------------------------------------------------------------
+
+
+class TestRemoteControlErrors:
+    def test_no_pin_raises(self) -> None:
+        client = _make_client()
+        client.token = "fake_token"
+        client.operation_password = None
+        with pytest.raises(LeapmotorAuthError, match="No vehicle PIN"):
+            client._remote_control(vin="VIN123", action="lock")
+        client.close()
+
+    def test_unknown_action_raises(self) -> None:
+        client = _make_client(operation_password="1234")
+        client.token = "fake_token"
+        with pytest.raises(LeapmotorApiError, match="not configured"):
+            client._remote_control(vin="VIN123", action="nonexistent_action")
+        client.close()
+
+
+# ---------------------------------------------------------------------------
+# Client — Properties
+# ---------------------------------------------------------------------------
+
+
+class TestClientProperties:
+    def test_account_cert_raises_when_not_loaded(self) -> None:
+        client = _make_client()
+        with pytest.raises(LeapmotorAuthError, match="No account certificate"):
+            _ = client.account_cert
+        client.close()
+
+    def test_sign_key_raises_when_not_loaded(self) -> None:
+        client = _make_client()
+        with pytest.raises(LeapmotorAuthError, match="No account sign material"):
+            _ = client.sign_key
+        client.close()
+
+    def test_account_cert_returns_tuple(self) -> None:
+        client = _make_client()
+        client.account_cert_file = "/tmp/cert.pem"
+        client.account_key_file = "/tmp/key.pem"
+        assert client.account_cert == ("/tmp/cert.pem", "/tmp/key.pem")
+        client.close()
+
+
+# ---------------------------------------------------------------------------
+# Client — _clear_auth
+# ---------------------------------------------------------------------------
+
+
+class TestClearAuth:
+    def test_clears_all_state(self) -> None:
+        client = _make_client()
+        client.token = "tok"
+        client.user_id = "uid"
+        client.sign_ikm = "ikm"
+        client.sign_salt = "salt"
+        client.sign_info = "info"
+        client.account_p12_password_used = "pass"
+        client.account_p12_password_source = "derived"
+        client.remote_cert_synced = True
+
+        client._clear_auth()
+
+        assert client.token is None
+        assert client.user_id is None
+        assert client.sign_ikm is None
+        assert client.sign_salt is None
+        assert client.sign_info is None
+        assert client.account_p12_password_used is None
+        assert client.account_p12_password_source is None
+        assert client.remote_cert_synced is False
+        client.close()
+
+
+# ---------------------------------------------------------------------------
+# Client — _auth_headers
+# ---------------------------------------------------------------------------
+
+
+class TestAuthHeaders:
+    def test_raises_when_not_authenticated(self) -> None:
+        client = _make_client()
+        with pytest.raises(LeapmotorAuthError, match="Not authenticated"):
+            client._auth_headers(content_type="application/json")
+        client.close()
+
+    def test_returns_headers_when_authenticated(self) -> None:
+        client = _make_client()
+        client.user_id = "123"
+        client.token = "abc"
+        headers = client._auth_headers(content_type="application/json")
+        assert headers["Content-Type"] == "application/json"
+        assert headers["userId"] == "123"
+        assert headers["token"] == "abc"
+        client.close()
+
+
+# ---------------------------------------------------------------------------
+# Client — _build_login_form_body
+# ---------------------------------------------------------------------------
+
+
+class TestBuildLoginFormBody:
+    def test_encodes_credentials(self) -> None:
+        client = _make_client(username="user@example.com", password="p@ss!word")
+        body = client._build_login_form_body()
+        assert "email=user%40example.com" in body
+        assert "password=p%40ss%21word" in body
+        assert "isRecoverAcct=0" in body
+        assert "loginMethod=1" in body
+        client.close()
+
+
+# ---------------------------------------------------------------------------
+# Client — _find_vehicle_by_vin (via mock)
+# ---------------------------------------------------------------------------
+
+
+class TestFindVehicleByVin:
+    def test_found(self) -> None:
+        client = _make_client()
+        client.token = "tok"
+        client.user_id = "uid"
+        client.sign_ikm = "ikm"
+        client.sign_salt = "salt"
+        client.sign_info = "info"
+        vehicle = Vehicle(vin="VIN1", car_id="1", car_type="C10", nickname="N", is_shared=False)
+        with patch.object(client, "get_vehicle_list", return_value=[vehicle]):
+            result = client._find_vehicle_by_vin("VIN1")
+            assert result.vin == "VIN1"
+        client.close()
+
+    def test_not_found_raises(self) -> None:
+        client = _make_client()
+        client.token = "tok"
+        client.user_id = "uid"
+        client.sign_ikm = "ikm"
+        client.sign_salt = "salt"
+        client.sign_info = "info"
+        with patch.object(client, "get_vehicle_list", return_value=[]):
+            with pytest.raises(LeapmotorApiError, match="Vehicle not found"):
+                client._find_vehicle_by_vin("NONEXISTENT")
+        client.close()
