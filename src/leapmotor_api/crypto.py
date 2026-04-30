@@ -440,6 +440,45 @@ def build_remote_ctl_write_headers(
     }
 
 
+def build_remote_ctl_write_headers_without_pin(
+    *,
+    sign_key: bytes,
+    device_id: str,
+    vin: str,
+    cmd_content: str,
+    cmd_id: str,
+    language: str = DEFAULT_LANGUAGE,
+) -> dict[str, str]:
+    """Build headers for remote control write requests that do not require a PIN."""
+    nonce = str(random.randint(100000, 9999999))  # noqa: S311
+    timestamp = str(int(time.time() * 1000))
+    sign_input = (
+        f"{language}"
+        f"{DEFAULT_CHANNEL}"
+        f"{cmd_content}"
+        f"{cmd_id}"
+        f"{device_id}"
+        f"{DEFAULT_DEVICE_TYPE}"
+        f"{nonce}"
+        f"{DEFAULT_SOURCE}"
+        f"{timestamp}"
+        f"{DEFAULT_APP_VERSION}"
+        f"{vin}"
+    )
+    return {
+        "acceptLanguage": language,
+        "channel": DEFAULT_CHANNEL,
+        "deviceType": DEFAULT_DEVICE_TYPE,
+        "X-P12_ENC_ALG": DEFAULT_P12_ENC_ALG,
+        "source": DEFAULT_SOURCE,
+        "version": DEFAULT_APP_VERSION,
+        "nonce": nonce,
+        "deviceId": device_id,
+        "timestamp": timestamp,
+        "sign": hmac.new(sign_key, sign_input.encode("utf-8"), hashlib.sha256).hexdigest(),
+    }
+
+
 def build_remote_ctl_result_headers(
     *,
     sign_key: bytes,
