@@ -197,23 +197,51 @@ class TestToBar:
 
 
 class TestVehicleState:
-    def test_charging(self) -> None:
-        assert _derive_vehicle_state({"1939": 1, "1941": 2}) == "charging"
-
-    def test_parked(self) -> None:
+    def test_parked_primary(self) -> None:
         assert _derive_vehicle_state({"1298": 1}) == "parked"
 
-    def test_driving(self) -> None:
+    def test_driving_primary(self) -> None:
         assert _derive_vehicle_state({"1298": 0}) == "driving"
+
+    def test_parked_fallback_drive_status(self) -> None:
+        assert _derive_vehicle_state({"1941": 2}) == "parked"
+        assert _derive_vehicle_state({"1941": 4}) == "parked"
+
+    def test_driving_fallback_drive_status(self) -> None:
+        assert _derive_vehicle_state({"1941": 3}) == "driving"
+        assert _derive_vehicle_state({"1941": 5}) == "driving"
+
+    def test_parked_fallback_vehicle_state(self) -> None:
+        assert _derive_vehicle_state({"1944": 0}) == "parked"
+        assert _derive_vehicle_state({"1944": 1}) == "parked"
+        assert _derive_vehicle_state({"1944": 3}) == "parked"
+
+    def test_driving_fallback_vehicle_state(self) -> None:
+        assert _derive_vehicle_state({"1944": 2}) == "driving"
+        assert _derive_vehicle_state({"1944": 4}) == "driving"
+        assert _derive_vehicle_state({"1944": 5}) == "driving"
 
     def test_none(self) -> None:
         assert _derive_vehicle_state({}) is None
 
 
 class TestIsCharging:
-    def test_charging(self) -> None:
-        assert _is_charging({"1939": 1, "1941": 2}) is True
-        assert _is_charging({"1939": 2, "1944": 0}) is True
+    def test_charging_by_current(self) -> None:
+        assert _is_charging({"1178": -5.0, "1200": 120}) is True
+        assert _is_charging({"1178": 10.0, "1200": 60}) is True
+
+    def test_not_charging_low_current(self) -> None:
+        assert _is_charging({"1178": 0.5, "1200": 120}) is False
+
+    def test_charging_by_power(self) -> None:
+        assert _is_charging({"1178": 5.0, "1177": 400.0, "1200": 90}) is True
+
+    def test_charging_legacy_fallback(self) -> None:
+        assert _is_charging({"1939": 1, "1941": 2, "1200": 60}) is True
+        assert _is_charging({"1939": 2, "1944": 0, "1200": 30}) is True
+
+    def test_not_charging_legacy_without_remaining_time(self) -> None:
+        assert _is_charging({"1939": 1, "1941": 2}) is False
 
     def test_not_charging(self) -> None:
         assert _is_charging({"1939": 0}) is False
