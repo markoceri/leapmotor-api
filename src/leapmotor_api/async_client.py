@@ -103,5 +103,23 @@ class AsyncLeapmotorApiClient:
     async def set_charge_limit(self, vin: str, charge_limit_percent: int) -> dict[str, Any]:
         return await asyncio.to_thread(self._client.set_charge_limit, vin, charge_limit_percent)
 
+    async def send_destination(
+        self,
+        vin: str,
+        *,
+        address: str,
+        address_name: str,
+        latitude: float,
+        longitude: float,
+    ) -> dict[str, Any]:
+        return await asyncio.to_thread(
+            self._client.send_destination,
+            vin,
+            address=address,
+            address_name=address_name,
+            latitude=latitude,
+            longitude=longitude,
+        )
+
     async def download_car_picture_package(self, *, picture_key: str) -> bytes:
         return await asyncio.to_thread(self._client.download_car_picture_package, picture_key=picture_key)
