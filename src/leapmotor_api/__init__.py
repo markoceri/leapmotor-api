@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+__version__ = "1.0.0"
+
 from .client import LeapmotorApiClient, normalize_vehicle
 from .const import (
     DEFAULT_BASE_URL,
@@ -48,6 +50,7 @@ from .models import (
 )
 
 __all__ = [
+    "__version__",
     "BatteryStatus",
     "ClimateStatus",
     "ConnectivityStatus",
