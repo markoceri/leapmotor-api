@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "leapmotor-api"
-version = "1.0.0"
+version = "0.1.0"
 description = "Unofficial Python client for the Leapmotor vehicle cloud API"
 readme = "README.md"
 license = "MIT"
