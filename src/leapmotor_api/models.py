@@ -105,6 +105,15 @@ class BatteryStatus:
         return round(abs(self.battery_voltage * self.battery_current) / 1000, 2)
 
     @property
+    def charging_power_kw(self) -> float | None:
+        """Charging power in kW (None when current below meaningful threshold)."""
+        if self.battery_current is None or self.battery_voltage is None:
+            return None
+        if abs(self.battery_current) < 3.0:
+            return None
+        return round(abs(self.battery_current * self.battery_voltage) / 1000.0, 3)
+
+    @property
     def is_charging(self) -> bool | None:
         """True if the vehicle is currently charging."""
         if self.charge_state is None:
