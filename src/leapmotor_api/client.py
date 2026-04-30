@@ -886,7 +886,19 @@ def _derive_vehicle_state(signal: dict[str, Any]) -> str | None:
 
 
 def _is_charging(signal: dict[str, Any]) -> bool:
+    """Return whether the vehicle is currently charging."""
+    remaining_charge_minutes = _safe_int(signal.get("1200"))
+    charging_current_a = _safe_float(signal.get("1178"))
+    if charging_current_a is not None and remaining_charge_minutes is not None:
+        return abs(charging_current_a) >= 1.0
+
+    charging_power_kw = _charging_power_kw(signal)
+    if charging_power_kw is not None:
+        return charging_power_kw >= 1.0 and remaining_charge_minutes is not None
+
     charge_status = _safe_int(signal.get("1939"))
     drive_status = _safe_int(signal.get("1941"))
     vehicle_state = _safe_int(signal.get("1944"))
-    return charge_status in (1, 2, 3) and (drive_status == 2 or vehicle_state == 0)
+    return charge_status in (1, 2, 3) and (
+        remaining_charge_minutes is not None and (drive_status == 2 or vehicle_state == 0)
+    )
