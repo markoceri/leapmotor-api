@@ -281,10 +281,7 @@ class LeapmotorApiClient:
             sign_key=self.sign_key, device_id=self.device_id, vin=vehicle.vin, language=self.language
         )
         headers.update(self._auth_headers(content_type="application/x-www-form-urlencoded"))
-        body = (
-            f"deviceID={quote(self.device_id, safe='')}"
-            f"&vin={quote(vehicle.vin, safe='')}"
-        )
+        body = f"deviceID={quote(self.device_id, safe='')}&vin={quote(vehicle.vin, safe='')}"
         response = self._post(
             path="/carownerservice/oversea/vehicle/v1/carpicture/key",
             headers=headers,
@@ -349,15 +346,13 @@ class LeapmotorApiClient:
         """Set the charge limit while preserving the current charging plan values."""
         vehicle = self._find_vehicle_by_vin(vin)
         status_json = self.get_vehicle_raw_status(vehicle)
-        charge_plan = (((status_json.get("data") or {}).get("config") or {}).get("3") or {})
+        charge_plan = ((status_json.get("data") or {}).get("config") or {}).get("3") or {}
 
         start_time = charge_plan.get("beginTime")
         end_time = charge_plan.get("endTime")
         cycles = charge_plan.get("cycles")
         if not start_time or not end_time or not cycles:
-            raise LeapmotorApiError(
-                "Current charging plan is incomplete, cannot safely update charge limit."
-            )
+            raise LeapmotorApiError("Current charging plan is incomplete, cannot safely update charge limit.")
 
         cmd_content = json.dumps(
             {
@@ -411,7 +406,9 @@ class LeapmotorApiClient:
     def download_car_picture_package(self, *, picture_key: str) -> bytes:
         """Download the picture package ZIP for one already-resolved picture key."""
         headers = build_car_picture_package_headers(
-            sign_key=self.sign_key, device_id=self.device_id, picture_key=picture_key,
+            sign_key=self.sign_key,
+            device_id=self.device_id,
+            picture_key=picture_key,
             language=self.language,
         )
         headers.update(self._auth_headers(content_type="application/x-www-form-urlencoded"))
@@ -422,9 +419,7 @@ class LeapmotorApiClient:
             cert=self.account_cert,
         )
         if response["status_code"] != 200:
-            raise LeapmotorApiError(
-                f"car picture package failed with HTTP {response['status_code']}"
-            )
+            raise LeapmotorApiError(f"car picture package failed with HTTP {response['status_code']}")
         return bytes(response["body"])
 
     # ------------------------------------------------------------------
@@ -443,8 +438,11 @@ class LeapmotorApiClient:
             mileage = self._fetch_optional_read("mileage energy detail", self.get_mileage_energy_detail, vehicle)
             picture = self._fetch_optional_read("car picture", self.get_car_picture, vehicle)
             result["vehicles"][vehicle.vin] = normalize_vehicle(
-                vehicle, status, self.user_id,
-                mileage_json=mileage, picture_json=picture,
+                vehicle,
+                status,
+                self.user_id,
+                mileage_json=mileage,
+                picture_json=picture,
             )
         return result
 
@@ -465,8 +463,7 @@ class LeapmotorApiClient:
             self.login()
         if not self.operation_password:
             raise LeapmotorAuthError(
-                "No vehicle PIN configured. Read-only data works without a PIN, "
-                "but remote-control actions require it."
+                "No vehicle PIN configured. Read-only data works without a PIN, but remote-control actions require it."
             )
         if action not in REMOTE_ACTION_SPECS:
             raise LeapmotorApiError(f"Remote action not configured: {action}")
@@ -496,8 +493,7 @@ class LeapmotorApiClient:
             self.login()
         if not self.operation_password:
             raise LeapmotorAuthError(
-                "No vehicle PIN configured. Read-only data works without a PIN, "
-                "but remote-control actions require it."
+                "No vehicle PIN configured. Read-only data works without a PIN, but remote-control actions require it."
             )
         if vehicle is None:
             vehicle = self._find_vehicle_by_vin(vin)
@@ -507,28 +503,36 @@ class LeapmotorApiClient:
 
         # Step 1: Verify operation password
         verify_headers = build_operpwd_verify_headers(
-            sign_key=self.sign_key, device_id=self.device_id, vin=vin, operation_password=operate_password,
+            sign_key=self.sign_key,
+            device_id=self.device_id,
+            vin=vin,
+            operation_password=operate_password,
             language=self.language,
         )
         verify_headers.update(self._auth_headers(content_type="application/x-www-form-urlencoded"))
-        verify_body = (
-            f"operatePassword={quote(operate_password, safe='')}"
-            f"&vin={quote(vin, safe='')}"
-        )
+        verify_body = f"operatePassword={quote(operate_password, safe='')}&vin={quote(vin, safe='')}"
         verify_response = self._post(
             path="/carownerservice/oversea/vehicle/v1/operPwd/verify",
-            headers=verify_headers, data=verify_body, cert=self.account_cert,
+            headers=verify_headers,
+            data=verify_body,
+            cert=self.account_cert,
         )
         _LOGGER.debug(
             "Leapmotor remote verify response for %s: HTTP %s %s",
-            action_label, verify_response["status_code"], verify_response["body"],
+            action_label,
+            verify_response["status_code"],
+            verify_response["body"],
         )
         self._parse_api_body(verify_response["status_code"], verify_response["body"], "remote verify")
 
         # Step 2: Execute remote command
         headers = build_remote_ctl_write_headers(
-            sign_key=self.sign_key, device_id=self.device_id, vin=vin,
-            cmd_content=cmd_content, cmd_id=cmd_id, operation_password=operate_password,
+            sign_key=self.sign_key,
+            device_id=self.device_id,
+            vin=vin,
+            cmd_content=cmd_content,
+            cmd_id=cmd_id,
+            operation_password=operate_password,
             language=self.language,
         )
         headers.update(self._auth_headers(content_type="application/x-www-form-urlencoded"))
@@ -540,11 +544,15 @@ class LeapmotorApiClient:
         )
         response = self._post(
             path="/carownerservice/oversea/vehicle/v1/app/remote/ctl",
-            headers=headers, data=body, cert=self.account_cert,
+            headers=headers,
+            data=body,
+            cert=self.account_cert,
         )
         _LOGGER.debug(
             "Leapmotor remote ctl response for %s: HTTP %s %s",
-            action_label, response["status_code"], response["body"],
+            action_label,
+            response["status_code"],
+            response["body"],
         )
         result = self._parse_api_body(response["status_code"], response["body"], f"remote {action_label}")
 
@@ -553,7 +561,8 @@ class LeapmotorApiClient:
         remote_ctl_id = remote_data.get("remoteCtlId")
         if remote_ctl_id:
             self._poll_remote_control_result(
-                vin=vehicle.vin, car_id=vehicle.car_id,
+                vin=vehicle.vin,
+                car_id=vehicle.car_id,
                 remote_ctl_id=str(remote_ctl_id),
                 timeout_ms=int(remote_data.get("queryRemoteCtlResultTimeout") or 30000),
                 interval_ms=int(remote_data.get("queryInterval") or 2000),
@@ -574,26 +583,31 @@ class LeapmotorApiClient:
             self.login()
 
         headers = build_remote_ctl_write_headers_without_pin(
-            sign_key=self.sign_key, device_id=self.device_id, vin=vin,
-            cmd_content=cmd_content, cmd_id=cmd_id,
+            sign_key=self.sign_key,
+            device_id=self.device_id,
+            vin=vin,
+            cmd_content=cmd_content,
+            cmd_id=cmd_id,
             language=self.language,
         )
         headers.update(self._auth_headers(content_type="application/x-www-form-urlencoded"))
-        body = (
-            f"cmdContent={quote(cmd_content, safe='')}"
-            f"&vin={quote(vin, safe='')}"
-            f"&cmdId={quote(cmd_id, safe='')}"
-        )
+        body = f"cmdContent={quote(cmd_content, safe='')}&vin={quote(vin, safe='')}&cmdId={quote(cmd_id, safe='')}"
         response = self._post(
             path="/carownerservice/oversea/vehicle/v1/app/remote/ctl",
-            headers=headers, data=body, cert=self.account_cert,
+            headers=headers,
+            data=body,
+            cert=self.account_cert,
         )
         _LOGGER.debug(
             "Leapmotor remote ctl response for %s: HTTP %s %s",
-            action_label, response["status_code"], response["body"],
+            action_label,
+            response["status_code"],
+            response["body"],
         )
         return self._parse_api_body(
-            response["status_code"], response["body"], f"remote {action_label}",
+            response["status_code"],
+            response["body"],
+            f"remote {action_label}",
         )
 
     def _ensure_remote_cert_sync(self) -> None:
@@ -603,15 +617,21 @@ class LeapmotorApiClient:
         headers.update(self._auth_headers(content_type="application/x-www-form-urlencoded"))
         response = self._post(
             path="/carownerservice/oversea/vehicle/v1/cert/sync",
-            headers=headers, data="",
+            headers=headers,
+            data="",
             cert=(self.app_cert_path, self.app_key_path),
         )
         self._parse_api_body(response["status_code"], response["body"], "cert sync")
         self.remote_cert_synced = True
 
     def _poll_remote_control_result(
-        self, *, vin: str, car_id: str | None,
-        remote_ctl_id: str, timeout_ms: int, interval_ms: int,
+        self,
+        *,
+        vin: str,
+        car_id: str | None,
+        remote_ctl_id: str,
+        timeout_ms: int,
+        interval_ms: int,
     ) -> dict[str, Any]:
         del vin, car_id
         data = f"remoteCtlId={quote(remote_ctl_id, safe='')}"
@@ -619,13 +639,17 @@ class LeapmotorApiClient:
         last_result: dict[str, Any] | None = None
         while time.monotonic() < deadline:
             headers = build_remote_ctl_result_headers(
-                sign_key=self.sign_key, device_id=self.device_id, remote_ctl_id=remote_ctl_id,
+                sign_key=self.sign_key,
+                device_id=self.device_id,
+                remote_ctl_id=remote_ctl_id,
                 language=self.language,
             )
             headers.update(self._auth_headers(content_type="application/x-www-form-urlencoded"))
             response = self._post(
                 path="/carownerservice/oversea/vehicle/v1/app/remote/ctl/result/query",
-                headers=headers, data=data, cert=self.account_cert,
+                headers=headers,
+                data=data,
+                cert=self.account_cert,
             )
             last_result = self._parse_api_body(response["status_code"], response["body"], "remote control result")
             if (last_result.get("data")) == 1:
@@ -648,20 +672,23 @@ class LeapmotorApiClient:
 
     def _ensure_static_cert_files(self) -> None:
         missing = [
-            name for name, path in [
+            name
+            for name, path in [
                 ("app_cert", self.app_cert_path),
                 ("app_key", self.app_key_path),
             ]
             if not Path(path).exists()
         ]
         if missing:
-            raise LeapmotorMissingAppCertError(
-                "Missing local app certificate material: " + ", ".join(missing)
-            )
+            raise LeapmotorMissingAppCertError("Missing local app certificate material: " + ", ".join(missing))
 
     def _post(
-        self, *, path: str, headers: dict[str, str],
-        data: str, cert: tuple[str, str],
+        self,
+        *,
+        path: str,
+        headers: dict[str, str],
+        data: str,
+        cert: tuple[str, str],
     ) -> dict[str, Any]:
         """Send a POST request using requests.Session with mutual TLS."""
         url = f"{self.base_url}/{path.lstrip('/')}"
@@ -684,8 +711,12 @@ class LeapmotorApiClient:
         }
 
     def _post_binary(
-        self, *, path: str, headers: dict[str, str],
-        data: str, cert: tuple[str, str],
+        self,
+        *,
+        path: str,
+        headers: dict[str, str],
+        data: str,
+        cert: tuple[str, str],
     ) -> dict[str, Any]:
         """Send a POST request and return the raw response body as bytes."""
         url = f"{self.base_url}/{path.lstrip('/')}"
@@ -779,8 +810,10 @@ class LeapmotorApiClient:
             self._record_api_result(label, status_code=status_code, code=None, message="non_json")
             raise LeapmotorApiError(f"{label} returned non-JSON response: {body[:200]}") from exc
         self._record_api_result(
-            label, status_code=status_code,
-            code=data.get("code"), message=data.get("message"),
+            label,
+            status_code=status_code,
+            code=data.get("code"),
+            message=data.get("message"),
         )
         if status_code != 200 or data.get("code") != 0:
             message = data.get("message") or body[:200]
@@ -807,6 +840,7 @@ class LeapmotorApiClient:
 # ---------------------------------------------------------------------------
 # Data normalization (pure functions, no side effects)
 # ---------------------------------------------------------------------------
+
 
 def normalize_vehicle(
     vehicle: Vehicle,

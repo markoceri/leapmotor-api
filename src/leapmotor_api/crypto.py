@@ -36,6 +36,7 @@ from .const import (
 # SM4 cipher tables (for PKCS#12 password derivation)
 # ---------------------------------------------------------------------------
 
+# fmt: off
 _SM4_SBOX = (
     0xD6, 0x90, 0xE9, 0xFE, 0xCC, 0xE1, 0x3D, 0xB7, 0x16, 0xB6, 0x14, 0xC2, 0x28, 0xFB, 0x2C, 0x05,
     0x2B, 0x67, 0x9A, 0x76, 0x2A, 0xBE, 0x04, 0xC3, 0xAA, 0x44, 0x13, 0x26, 0x49, 0x86, 0x06, 0x99,
@@ -65,11 +66,13 @@ _P12_SM4_ROUND_KEYS = (
     0x7C502387, 0xAAAB9BC6, 0xF0FE744B, 0x1CAFC872,
     0x95A9D075, 0x88070D58, 0x22800475, 0x8391938B,
 )
+# fmt: on
 
 
 # ---------------------------------------------------------------------------
 # SM4 cipher primitives
 # ---------------------------------------------------------------------------
+
 
 def _rotate_left(value: int, bits: int) -> int:
     return ((value << bits) & 0xFFFFFFFF) | (value >> (32 - bits))
@@ -105,6 +108,7 @@ def _p12_memory_encode(data: bytes) -> bytes:
 # PKCS#12 password derivation
 # ---------------------------------------------------------------------------
 
+
 def derive_account_p12_password(account_id: str | int, uid: str) -> str:
     """Derive the account certificate password from login response fields."""
     cn = hashlib.md5(str(account_id).encode("ascii")).hexdigest()  # noqa: S324
@@ -117,6 +121,7 @@ def derive_account_p12_password(account_id: str | int, uid: str) -> str:
 # ---------------------------------------------------------------------------
 # PKCS#12 certificate loading
 # ---------------------------------------------------------------------------
+
 
 def load_account_cert_from_p12(
     p12_bytes: bytes,
@@ -150,6 +155,7 @@ def load_account_cert_from_p12(
 # AES-CBC encryption for operation password (vehicle PIN)
 # ---------------------------------------------------------------------------
 
+
 def derive_operpwd_key_iv(token: str | None) -> tuple[str, str]:
     """Derive AES key and IV from the session token for operatePassword encryption."""
     if not token or len(token) < 64:
@@ -179,6 +185,7 @@ def encrypt_operate_password(pin: str, token: str | None) -> str:
 # HKDF signing key derivation
 # ---------------------------------------------------------------------------
 
+
 def derive_sign_key(ikm: str, salt: str, info: str) -> bytes:
     """Derive the 32-byte HMAC signing key using HKDF-SHA256."""
     return HKDF(
@@ -192,6 +199,7 @@ def derive_sign_key(ikm: str, salt: str, info: str) -> bytes:
 # ---------------------------------------------------------------------------
 # JWT device ID extraction
 # ---------------------------------------------------------------------------
+
 
 def derive_session_device_id(token: str | None, fallback_device_id: str) -> str:
     """Extract the session deviceId from the JWT payload."""
@@ -214,6 +222,7 @@ def derive_session_device_id(token: str | None, fallback_device_id: str) -> str:
 # Request header builders
 # ---------------------------------------------------------------------------
 
+
 def build_login_headers(
     *,
     device_id: str,
@@ -224,21 +233,23 @@ def build_login_headers(
     """Build headers for the login request with SHA256 signature."""
     nonce = str(random.randint(100000, 9999999))  # noqa: S311
     timestamp = str(int(time.time() * 1000))
-    sign_input = "".join([
-        language,
-        DEFAULT_DEVICE_TYPE,
-        device_id,
-        "1",
-        username,
-        "0",
-        "1",
-        nonce,
-        password,
-        "20260204",
-        DEFAULT_SOURCE,
-        timestamp,
-        DEFAULT_APP_VERSION,
-    ])
+    sign_input = "".join(
+        [
+            language,
+            DEFAULT_DEVICE_TYPE,
+            device_id,
+            "1",
+            username,
+            "0",
+            "1",
+            nonce,
+            password,
+            "20260204",
+            DEFAULT_SOURCE,
+            timestamp,
+            DEFAULT_APP_VERSION,
+        ]
+    )
     return {
         "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
         "acceptLanguage": language,

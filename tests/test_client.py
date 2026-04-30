@@ -32,6 +32,7 @@ from leapmotor_api.models import Vehicle
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_cert_files() -> tuple[str, str]:
     """Create dummy cert/key files for testing."""
     cert_fd, cert_path = tempfile.mkstemp(suffix=".pem")
@@ -59,8 +60,8 @@ def _make_client(**kwargs: Any) -> LeapmotorApiClient:
 # Client construction
 # ---------------------------------------------------------------------------
 
-class TestClientInit:
 
+class TestClientInit:
     def test_default_device_id_is_uuid(self) -> None:
         client = _make_client()
         assert len(client.device_id) == 32  # UUID4 hex without dashes
@@ -84,7 +85,6 @@ class TestClientInit:
 
 
 class TestClientClose:
-
     def test_close_cleans_temp_files(self) -> None:
         client = _make_client()
         # Simulate loaded account cert
@@ -104,8 +104,8 @@ class TestClientClose:
 # Normalize vehicle
 # ---------------------------------------------------------------------------
 
-class TestNormalizeVehicle:
 
+class TestNormalizeVehicle:
     def _vehicle(self) -> Vehicle:
         return Vehicle(
             vin="WLMTEST123",
@@ -143,7 +143,10 @@ class TestNormalizeVehicle:
         status_json: dict[str, Any] = {"data": {"signal": {}, "config": {}}}
         mileage_json = {"data": {"totalmileage": 15000, "deliveryDays": 365}}
         result = normalize_vehicle(
-            self._vehicle(), status_json, "user1", mileage_json=mileage_json,
+            self._vehicle(),
+            status_json,
+            "user1",
+            mileage_json=mileage_json,
         )
         assert result["history"]["total_mileage_km"] == 15000
         assert result["history"]["delivery_days"] == 365
@@ -152,7 +155,10 @@ class TestNormalizeVehicle:
         status_json: dict[str, Any] = {"data": {"signal": {}, "config": {}}}
         picture_json = {"data": {"shareBindUrl": "https://example.com/pic.jpg", "key": "k"}}
         result = normalize_vehicle(
-            self._vehicle(), status_json, "user1", picture_json=picture_json,
+            self._vehicle(),
+            status_json,
+            "user1",
+            picture_json=picture_json,
         )
         assert result["media"]["car_picture_status"] == "available"
         assert result["media"]["car_picture_url"] == "https://example.com/pic.jpg"
@@ -166,6 +172,7 @@ class TestNormalizeVehicle:
 # ---------------------------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------------------------
+
 
 class TestSafeInt:
     def test_valid(self) -> None:
@@ -281,7 +288,6 @@ class TestChargingPowerKw:
 
 
 class TestNormalizeVehicleExtended:
-
     def _vehicle(self) -> Vehicle:
         return Vehicle(
             vin="WLMTEST123",
@@ -364,16 +370,24 @@ class TestNormalizeVehicleExtended:
 
     def test_vehicle_abilities_empty(self) -> None:
         v = Vehicle(
-            vin="VIN1", car_id="1", car_type="C10",
-            nickname="N", is_shared=False, abilities=None,
+            vin="VIN1",
+            car_id="1",
+            car_type="C10",
+            nickname="N",
+            is_shared=False,
+            abilities=None,
         )
         result = normalize_vehicle(v, {}, "user1")
         assert result["vehicle"]["abilities"] == []
 
     def test_vehicle_abilities_populated(self) -> None:
         v = Vehicle(
-            vin="VIN1", car_id="1", car_type="C10",
-            nickname="N", is_shared=False, abilities=["remote", "charge"],
+            vin="VIN1",
+            car_id="1",
+            car_type="C10",
+            nickname="N",
+            is_shared=False,
+            abilities=["remote", "charge"],
         )
         result = normalize_vehicle(v, {}, "user1")
         assert result["vehicle"]["abilities"] == ["remote", "charge"]

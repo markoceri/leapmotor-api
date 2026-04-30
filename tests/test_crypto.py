@@ -75,6 +75,7 @@ class TestEncryptOperatePassword:
     def test_output_is_base64(self) -> None:
         result = encrypt_operate_password("1234", None)
         import base64
+
         decoded = base64.b64decode(result)
         assert len(decoded) == 16  # 4 bytes PIN + PKCS7 padding → 16 bytes
 
@@ -102,6 +103,7 @@ class TestDeriveSessionDeviceId:
     def test_valid_jwt_with_device_id(self) -> None:
         import base64
         import json
+
         payload = {"user_name": "user,123,device_abc,extra"}
         payload_b64 = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
         token = f"header.{payload_b64}.signature"
@@ -110,6 +112,7 @@ class TestDeriveSessionDeviceId:
     def test_valid_jwt_without_device_id(self) -> None:
         import base64
         import json
+
         payload = {"user_name": "user,123,,extra"}
         payload_b64 = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
         token = f"header.{payload_b64}.signature"
@@ -150,7 +153,9 @@ class TestBuildLoginHeaders:
 
     def test_sign_is_sha256_hex(self) -> None:
         headers = build_login_headers(
-            device_id="dev", username="u", password="p",
+            device_id="dev",
+            username="u",
+            password="p",
         )
         assert len(headers["sign"]) == 64  # SHA256 hex
 
@@ -161,7 +166,8 @@ class TestBuildSignedHeaders:
     def test_contains_required_fields(self) -> None:
         sign_key = derive_sign_key("ikm", "salt", "info")
         headers = build_signed_headers(
-            sign_key=sign_key, device_id="test_device",
+            sign_key=sign_key,
+            device_id="test_device",
         )
         assert "sign" in headers
         assert headers["deviceId"] == "test_device"

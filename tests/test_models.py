@@ -87,15 +87,19 @@ class TestTirePressure:
 
     def test_all_ok_true(self) -> None:
         tp = TirePressure(
-            front_left_state=0, front_right_state=0,
-            rear_left_state=0, rear_right_state=0,
+            front_left_state=0,
+            front_right_state=0,
+            rear_left_state=0,
+            rear_right_state=0,
         )
         assert tp.all_ok is True
 
     def test_all_ok_false(self) -> None:
         tp = TirePressure(
-            front_left_state=0, front_right_state=1,
-            rear_left_state=0, rear_right_state=0,
+            front_left_state=0,
+            front_right_state=1,
+            rear_left_state=0,
+            rear_right_state=0,
         )
         assert tp.all_ok is False
 

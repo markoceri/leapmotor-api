@@ -17,8 +17,7 @@ try:
     from PIL import Image
 except ImportError as exc:
     raise ImportError(
-        "Pillow is required for image compositing. "
-        "Install it with: pip install leapmotor-api[image]"
+        "Pillow is required for image compositing. Install it with: pip install leapmotor-api[image]"
     ) from exc
 
 
@@ -138,7 +137,8 @@ class CarImagePackage:
         return self._images.get("carpic_for_tripsum.png")
 
     def _composite_layers(
-        self, layer_names: list[str],
+        self,
+        layer_names: list[str],
     ) -> Image.Image:
         """Composite the given layers into a single RGBA canvas."""
         body = self._images.get("carpic_body.png")
@@ -216,10 +216,7 @@ class CarImagePackage:
 
         # Build the base canvas without the animated charge-level layer
         layer_names = _build_layer_list(status)
-        base_layers = [
-            n for n in layer_names
-            if not n.startswith("carpic_charge") or n == "carpic_charge_open.png"
-        ]
+        base_layers = [n for n in layer_names if not n.startswith("carpic_charge") or n == "carpic_charge_open.png"]
         base_canvas = self._composite_layers(base_layers)
 
         # Generate 15 frames, each overlaying a different charge level
