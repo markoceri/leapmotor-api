@@ -902,3 +902,14 @@ def _is_charging(signal: dict[str, Any]) -> bool:
     return charge_status in (1, 2, 3) and (
         remaining_charge_minutes is not None and (drive_status == 2 or vehicle_state == 0)
     )
+
+
+def _charging_power_kw(signal: dict[str, Any]) -> float | None:
+    """Return charging power derived from voltage and current signals."""
+    current = _safe_float(signal.get("1178"))
+    voltage = _safe_float(signal.get("1177"))
+    if current is None or voltage is None:
+        return None
+    if abs(current) < 3.0:
+        return None
+    return round(abs(current * voltage) / 1000.0, 3)
