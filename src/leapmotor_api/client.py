@@ -55,6 +55,7 @@ from .crypto import (
     build_operpwd_verify_headers,
     build_remote_ctl_result_headers,
     build_remote_ctl_write_headers,
+    build_remote_ctl_write_headers_without_pin,
     build_signed_headers,
     derive_account_p12_password,
     derive_session_device_id,
@@ -531,6 +532,42 @@ class LeapmotorApiClient:
                 interval_ms=int(remote_data.get("queryInterval") or 2000),
             )
         return result
+
+    def _remote_control_without_pin_raw(
+        self,
+        *,
+        vin: str,
+        cmd_id: str,
+        cmd_content: str,
+        action_label: str,
+    ) -> dict[str, Any]:
+        """Execute a remote-control command that does not use operatePassword."""
+        _LOGGER.info("Starting Leapmotor remote action %s for VIN %s", action_label, vin)
+        if not self.token:
+            self.login()
+
+        headers = build_remote_ctl_write_headers_without_pin(
+            sign_key=self.sign_key, device_id=self.device_id, vin=vin,
+            cmd_content=cmd_content, cmd_id=cmd_id,
+            language=self.language,
+        )
+        headers.update(self._auth_headers(content_type="application/x-www-form-urlencoded"))
+        body = (
+            f"cmdContent={quote(cmd_content, safe='')}"
+            f"&vin={quote(vin, safe='')}"
+            f"&cmdId={quote(cmd_id, safe='')}"
+        )
+        response = self._post(
+            path="/carownerservice/oversea/vehicle/v1/app/remote/ctl",
+            headers=headers, data=body, cert=self.account_cert,
+        )
+        _LOGGER.debug(
+            "Leapmotor remote ctl response for %s: HTTP %s %s",
+            action_label, response["status_code"], response["body"],
+        )
+        return self._parse_api_body(
+            response["status_code"], response["body"], f"remote {action_label}",
+        )
 
     def _ensure_remote_cert_sync(self) -> None:
         if self.remote_cert_synced:
