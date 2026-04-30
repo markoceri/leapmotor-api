@@ -71,7 +71,9 @@ class LeapmotorApiClient:
     """Client for the Leapmotor vehicle cloud API.
 
     Uses ``requests.Session`` with mutual TLS (client certificate) for all
-    API communication. TLS server certificate verification is enabled by default.
+    API communication. TLS server certificate verification is disabled by
+    default because Leapmotor's API servers use self-signed certificates
+    that are not trusted by any public CA.
     """
 
     def __init__(
@@ -86,7 +88,7 @@ class LeapmotorApiClient:
         base_url: str = DEFAULT_BASE_URL,
         timeout: int = DEFAULT_TIMEOUT,
         device_id: str | None = None,
-        verify_ssl: bool = False,
+        verify_ssl: bool = False,  # Leapmotor servers use self-signed certs
         language: str = DEFAULT_LANGUAGE,
     ) -> None:
         self.username = username
