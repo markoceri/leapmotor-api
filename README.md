@@ -5,6 +5,10 @@ Unofficial Python client for the Leapmotor vehicle cloud API.
 Extracted from the [leapmotor-ha](https://github.com/kerniger/leapmotor-ha) Home Assistant integration
 to provide a reusable, framework-agnostic library.
 
+## Acknowledgments
+
+Special thanks to [Jakob Kern](https://github.com/kerniger) for the impressive reverse engineering work on the Leapmotor application and for generously sharing his work.
+
 ## Installation
 
 ```bash
