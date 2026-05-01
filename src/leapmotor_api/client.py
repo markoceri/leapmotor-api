@@ -167,20 +167,6 @@ class LeapmotorApiClient:
     # Public API — Authentication & Data
     # ------------------------------------------------------------------
 
-    def fetch_data(self) -> dict[str, Any]:
-        """Authenticate if needed and fetch all read-only vehicle data."""
-        if not self.token:
-            self._ensure_static_cert_files()
-            self.login()
-
-        try:
-            return self._fetch_authenticated_data()
-        except LeapmotorApiError:
-            self._clear_auth()
-            self._ensure_static_cert_files()
-            self.login()
-            return self._fetch_authenticated_data()
-
     def login(self) -> None:
         """Login with the static app cert and load the account cert from the response."""
         self._ensure_static_cert_files()
@@ -207,6 +193,20 @@ class LeapmotorApiClient:
         self.sign_info = str(login_data.get("signInfo"))
         self._load_account_cert(login_data)
         self.remote_cert_synced = False
+
+    def fetch_data(self) -> dict[str, Any]:
+        """Authenticate if needed and fetch all read-only vehicle data."""
+        if not self.token:
+            self._ensure_static_cert_files()
+            self.login()
+
+        try:
+            return self._fetch_authenticated_data()
+        except LeapmotorApiError:
+            self._clear_auth()
+            self._ensure_static_cert_files()
+            self.login()
+            return self._fetch_authenticated_data()
 
     def get_vehicle_list(self) -> list[Vehicle]:
         """Fetch the account vehicle list."""
