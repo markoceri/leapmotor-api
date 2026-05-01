@@ -230,7 +230,7 @@ class LeapmotorApiClient:
                     Vehicle(
                         vin=str(vin),
                         car_id=str(item["carId"]) if item.get("carId") is not None else None,
-                        car_type=str(item.get("carType") or "C10"),
+                        car_type=str(item.get("carType")),
                         nickname=item.get("nickName"),
                         is_shared=is_shared,
                         year=_safe_int(item.get("year")),
