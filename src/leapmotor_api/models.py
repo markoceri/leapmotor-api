@@ -5,7 +5,21 @@ from __future__ import annotations
 import contextlib
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import IntEnum
 from typing import Any
+
+# ---------------------------------------------------------------------------
+# Enums and data classes for structured vehicle status and metadata.
+# ---------------------------------------------------------------------------
+
+
+class ChargeState(IntEnum):
+    """Charging state codes reported by the vehicle."""
+
+    NOT_CONNECTED = 0
+    AC_CONNECTED = 1
+    DC_CONNECTED = 2  # ???
+
 
 
 @dataclass(slots=True)
