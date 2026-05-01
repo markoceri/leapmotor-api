@@ -21,6 +21,10 @@ class ChargeState(IntEnum):
     DC_CONNECTED = 2  # ???
 
 
+# ---------------------------------------------------------------------------
+# Class models for API data structures
+# ---------------------------------------------------------------------------
+
 
 @dataclass(slots=True)
 class Vehicle:
