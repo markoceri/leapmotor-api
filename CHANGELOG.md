@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Added `raw` property to `Vehicle` model for storing original API response data for forward-compatibility and debugging
 - Added `from_dict` class method to `Vehicle` model for mapping raw API response into structured model
 - Added example usage script (`examples/usage.py`) that demonstrates how to use the `LeapmotorApiClient` to connect to the API, retrieve vehicle status, and display it in a human-readable format
+- Added `pre-commit` dependency in `pyproject.toml` for managing git hooks and ensuring code quality before commits
 
 ### Changed
 - Updated `BatteryStatus` to use `ChargeState` enum instead of raw integers
