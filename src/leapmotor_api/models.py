@@ -58,7 +58,7 @@ class Vehicle:
     def from_dict(cls, data: dict[str, Any], is_shared: bool) -> Vehicle:
         """Build a Vehicle from a raw API dict."""
         return cls(
-            vin=data.get("vin"),
+            vin=data.get("vin", ""),
             email=data.get("email"),
             plate_number=data.get("plateNumber"),
             car_id=str(data["carId"]) if data.get("carId") is not None else None,
