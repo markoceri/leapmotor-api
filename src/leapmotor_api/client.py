@@ -993,6 +993,10 @@ def _derive_vehicle_state(signal: dict[str, Any]) -> str | None:
 
 def _is_charging(signal: dict[str, Any]) -> bool:
     """Return whether the vehicle is currently charging."""
+    # If the vehicle is driving, it's not charging (regen braking is not charging)
+    if _derive_vehicle_state(signal) == "driving":
+        return False
+
     remaining_charge_minutes = _safe_int(signal.get("1200"))
     charging_current_a = _safe_float(signal.get("1178"))
     if charging_current_a is not None and remaining_charge_minutes is not None:
@@ -1016,6 +1020,4 @@ def _charging_power_kw(signal: dict[str, Any]) -> float | None:
     voltage = _safe_float(signal.get("1177"))
     if current is None or voltage is None:
         return None
-    if abs(current) < 3.0:
-        return None
-    return round(abs(current * voltage) / 1000.0, 3)
+    return round(current * voltage / 1000.0, 3)
