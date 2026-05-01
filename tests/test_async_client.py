@@ -41,7 +41,10 @@ def _make_vehicle() -> Vehicle:
         vin="WLMTEST123",
         car_id="42",
         car_type="C10",
-        nickname="TestCar",
+        email=None,
+        plate_number=None,
+        user_nickname=None,
+        vehicle_nickname="TestCar",
         is_shared=False,
         year=2024,
     )
