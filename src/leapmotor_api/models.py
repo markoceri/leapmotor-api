@@ -330,7 +330,7 @@ class VehicleStatus:
     collect_time: datetime | None = None
     create_time: datetime | None = None
 
-    # -- Raw dict for forward-compatibility --
+    # -- Raw dict for debug --
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
