@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from leapmotor_api.async_client import AsyncLeapmotorApiClient
 from leapmotor_api.client import LeapmotorApiClient
-from leapmotor_api.models import Vehicle, VehicleStatus
+from leapmotor_api.models import MessageList, Vehicle, VehicleStatus
 
 
 def _make_cert_files() -> tuple[str, str]:
@@ -230,4 +230,35 @@ class TestAsyncClientCarPicture:
             result = asyncio.run(async_client.get_car_picture(vehicle))
             mock.assert_called_once_with(vehicle)
             assert result == expected
+        sync.close()
+
+
+class TestAsyncClientMessages:
+    def test_get_message_list_delegates(self) -> None:
+        sync = _make_sync_client()
+        async_client = AsyncLeapmotorApiClient(sync)
+        expected = MessageList(count=1, messages=[])
+        with patch.object(sync, "get_message_list", return_value=expected) as mock:
+            result = asyncio.run(async_client.get_message_list(page_no=2, page_size=5))
+            mock.assert_called_once_with(page_no=2, page_size=5)
+            assert result is expected
+        sync.close()
+
+    def test_get_message_list_defaults(self) -> None:
+        sync = _make_sync_client()
+        async_client = AsyncLeapmotorApiClient(sync)
+        expected = MessageList(count=0, messages=[])
+        with patch.object(sync, "get_message_list", return_value=expected) as mock:
+            result = asyncio.run(async_client.get_message_list())
+            mock.assert_called_once_with(page_no=1, page_size=10)
+            assert result is expected
+        sync.close()
+
+    def test_get_unread_message_count_delegates(self) -> None:
+        sync = _make_sync_client()
+        async_client = AsyncLeapmotorApiClient(sync)
+        with patch.object(sync, "get_unread_message_count", return_value=5) as mock:
+            result = asyncio.run(async_client.get_unread_message_count())
+            mock.assert_called_once()
+            assert result == 5
         sync.close()

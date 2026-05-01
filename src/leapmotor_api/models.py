@@ -499,3 +499,66 @@ class RemoteActionResult:
     success: bool
     data: dict[str, Any] = field(default_factory=dict)
     error: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Message models
+# ---------------------------------------------------------------------------
+
+
+@dataclass(slots=True)
+class Message:
+    """A single notification message from the message list."""
+
+    id: int
+    vin: str | None
+    title: str | None
+    message: str | None
+    send_time: int | None  # epoch ms
+    read_flag: int | None  # 0=unread, 1=read
+    url: str | None
+    msg_type: int | None
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @property
+    def send_datetime(self) -> datetime | None:
+        """Convert send_time epoch ms to a datetime."""
+        if self.send_time is None:
+            return None
+        return datetime.fromtimestamp(self.send_time / 1000)  # noqa: DTZ006
+
+    @property
+    def is_read(self) -> bool:
+        """True if the message has been read."""
+        return self.read_flag == 1
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Message:
+        """Build a Message from a raw API dict."""
+        return cls(
+            id=data.get("id", 0),
+            vin=data.get("vin"),
+            title=data.get("title"),
+            message=data.get("message"),
+            send_time=data.get("sendTime"),
+            read_flag=data.get("readFlag"),
+            url=data.get("url"),
+            msg_type=data.get("msgType"),
+            raw=data,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class MessageList:
+    """Paginated message list response."""
+
+    count: int
+    messages: list[Message]
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> MessageList:
+        """Build a MessageList from the API response 'data' field."""
+        return cls(
+            count=data.get("count", 0),
+            messages=[Message.from_dict(m) for m in (data.get("list") or [])],
+        )

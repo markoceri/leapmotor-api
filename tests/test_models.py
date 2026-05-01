@@ -12,6 +12,8 @@ from leapmotor_api.models import (
     ChargeState,
     DoorStatus,
     DrivingStatus,
+    Message,
+    MessageList,
     RemoteActionResult,
     RemoteActionSpec,
     TirePressure,
@@ -598,3 +600,85 @@ class TestRemoteActionResult:
         assert r.success is False
         assert r.error == "timeout"
         assert r.data == {}
+
+
+# ---------------------------------------------------------------------------
+# Message & MessageList
+# ---------------------------------------------------------------------------
+
+
+class TestMessage:
+    def test_from_dict(self) -> None:
+        data: dict[str, Any] = {
+            "id": 8162044,
+            "vin": "WLMTEST123456",
+            "title": "Condivisione veicolo",
+            "message": "Notification text",
+            "sendTime": 1777029905000,
+            "readFlag": 1,
+            "url": '{"key":"value"}',
+            "msgType": 14,
+        }
+        msg = Message.from_dict(data)
+        assert msg.id == 8162044
+        assert msg.vin == "WLMTEST123456"
+        assert msg.title == "Condivisione veicolo"
+        assert msg.message == "Notification text"
+        assert msg.send_time == 1777029905000
+        assert msg.read_flag == 1
+        assert msg.url == '{"key":"value"}'
+        assert msg.msg_type == 14
+        assert msg.raw == data
+
+    def test_is_read(self) -> None:
+        msg = Message.from_dict({"id": 1, "readFlag": 1})
+        assert msg.is_read is True
+
+    def test_is_unread(self) -> None:
+        msg = Message.from_dict({"id": 2, "readFlag": 0})
+        assert msg.is_read is False
+
+    def test_send_datetime(self) -> None:
+        msg = Message.from_dict({"id": 1, "sendTime": 1700000000000})
+        dt = msg.send_datetime
+        assert dt is not None
+        assert dt.year == 2023
+
+    def test_send_datetime_none(self) -> None:
+        msg = Message.from_dict({"id": 1})
+        assert msg.send_datetime is None
+
+    def test_missing_fields_default_none(self) -> None:
+        msg = Message.from_dict({"id": 5})
+        assert msg.vin is None
+        assert msg.title is None
+        assert msg.message is None
+        assert msg.send_time is None
+        assert msg.read_flag is None
+        assert msg.url is None
+        assert msg.msg_type is None
+
+
+class TestMessageList:
+    def test_from_dict(self) -> None:
+        data: dict[str, Any] = {
+            "count": 2,
+            "list": [
+                {"id": 1, "vin": "VIN1", "title": "Title1", "readFlag": 0},
+                {"id": 2, "vin": "VIN2", "title": "Title2", "readFlag": 1},
+            ],
+        }
+        ml = MessageList.from_dict(data)
+        assert ml.count == 2
+        assert len(ml.messages) == 2
+        assert ml.messages[0].id == 1
+        assert ml.messages[1].is_read is True
+
+    def test_empty_list(self) -> None:
+        ml = MessageList.from_dict({"count": 0, "list": []})
+        assert ml.count == 0
+        assert ml.messages == []
+
+    def test_missing_list_key(self) -> None:
+        ml = MessageList.from_dict({"count": 0})
+        assert ml.messages == []

@@ -26,7 +26,7 @@ from leapmotor_api.exceptions import (
     LeapmotorAuthError,
     LeapmotorMissingAppCertError,
 )
-from leapmotor_api.models import Vehicle
+from leapmotor_api.models import MessageList, Vehicle
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -634,4 +634,82 @@ class TestFindVehicleByVin:
         with patch.object(client, "get_vehicle_list", return_value=[]):
             with pytest.raises(LeapmotorApiError, match="Vehicle not found"):
                 client._find_vehicle_by_vin("NONEXISTENT")
+        client.close()
+
+
+# ---------------------------------------------------------------------------
+# Client — Message endpoints
+# ---------------------------------------------------------------------------
+
+
+class TestMessageEndpoints:
+    def _setup_auth(self, client: LeapmotorApiClient) -> None:
+        client.token = "tok"
+        client.user_id = "uid"
+        client.sign_ikm = "ikm"
+        client.sign_salt = "salt"
+        client.sign_info = "info"
+        client.account_cert_file = "/tmp/cert.pem"
+        client.account_key_file = "/tmp/key.pem"
+
+    def test_get_message_list(self) -> None:
+        client = _make_client()
+        self._setup_auth(client)
+        api_response = {
+            "status_code": 200,
+            "body": json.dumps(
+                {
+                    "code": 0,
+                    "data": {
+                        "count": 1,
+                        "list": [{"id": 100, "vin": "VIN1", "title": "Test", "readFlag": 0, "msgType": 14}],
+                    },
+                }
+            ),
+        }
+        with patch.object(client, "_post", return_value=api_response):
+            result = client.get_message_list(page_no=1, page_size=5)
+        assert isinstance(result, MessageList)
+        assert result.count == 1
+        assert len(result.messages) == 1
+        assert result.messages[0].id == 100
+        assert result.messages[0].vin == "VIN1"
+        assert result.messages[0].is_read is False
+        client.close()
+
+    def test_get_message_list_empty(self) -> None:
+        client = _make_client()
+        self._setup_auth(client)
+        api_response = {
+            "status_code": 200,
+            "body": json.dumps({"code": 0, "data": {"count": 0, "list": []}}),
+        }
+        with patch.object(client, "_post", return_value=api_response):
+            result = client.get_message_list()
+        assert result.count == 0
+        assert result.messages == []
+        client.close()
+
+    def test_get_unread_message_count(self) -> None:
+        client = _make_client()
+        self._setup_auth(client)
+        api_response = {
+            "status_code": 200,
+            "body": json.dumps({"code": 0, "data": {"unread": 3}}),
+        }
+        with patch.object(client, "_post", return_value=api_response):
+            result = client.get_unread_message_count()
+        assert result == 3
+        client.close()
+
+    def test_get_unread_message_count_zero(self) -> None:
+        client = _make_client()
+        self._setup_auth(client)
+        api_response = {
+            "status_code": 200,
+            "body": json.dumps({"code": 0, "data": {"unread": 0}}),
+        }
+        with patch.object(client, "_post", return_value=api_response):
+            result = client.get_unread_message_count()
+        assert result == 0
         client.close()

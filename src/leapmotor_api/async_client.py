@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .client import LeapmotorApiClient
-    from .models import Vehicle, VehicleStatus
+    from .models import MessageList, Vehicle, VehicleStatus
 
 
 class AsyncLeapmotorApiClient:
@@ -154,3 +154,9 @@ class AsyncLeapmotorApiClient:
 
     async def download_car_picture_package(self, *, picture_key: str) -> bytes:
         return await asyncio.to_thread(self._client.download_car_picture_package, picture_key=picture_key)
+
+    async def get_message_list(self, *, page_no: int = 1, page_size: int = 10) -> MessageList:
+        return await asyncio.to_thread(self._client.get_message_list, page_no=page_no, page_size=page_size)
+
+    async def get_unread_message_count(self) -> int:
+        return await asyncio.to_thread(self._client.get_unread_message_count)

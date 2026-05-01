@@ -102,6 +102,23 @@ def main() -> None:
 
             print()
 
+        # --- Messages ---
+        print("\n" + "=" * 60)
+        print("MESSAGES")
+        print("=" * 60)
+
+        unread = client.get_unread_message_count()
+        print(f"Unread messages: {unread}\n")
+
+        message_list = client.get_message_list(page_no=1, page_size=10)
+        print(f"Total messages: {message_list.count}")
+        for msg in message_list.messages:
+            status = "READ" if msg.is_read else "UNREAD"
+            print(f"  [{status}] {msg.title} (type={msg.msg_type})")
+            print(f"    {msg.message}")
+            print(f"    Time: {msg.send_datetime}")
+            print()
+
     finally:
         client.close()
 

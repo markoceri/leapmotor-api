@@ -271,23 +271,33 @@ def build_signed_headers(
     device_id: str,
     vin: str | None = None,
     language: str = DEFAULT_LANGUAGE,
+    body_params: dict[str, str] | None = None,
 ) -> dict[str, str]:
-    """Build HMAC-SHA256 signed headers for authenticated requests."""
+    """Build HMAC-SHA256 signed headers for authenticated requests.
+
+    If *body_params* is provided, their values are included in the sign input,
+    sorted alphabetically by key together with the standard header fields.
+    """
     nonce = str(random.randint(100000, 9999999))  # noqa: S311
     timestamp = str(int(time.time() * 1000))
-    sign_input_parts = [
-        language,
-        DEFAULT_CHANNEL,
-        device_id,
-        DEFAULT_DEVICE_TYPE,
-        nonce,
-        DEFAULT_SOURCE,
-        timestamp,
-        DEFAULT_APP_VERSION,
-    ]
+
+    # Base fields that always participate in the signature (sorted by key)
+    sign_fields: dict[str, str] = {
+        "acceptLanguage": language,
+        "channel": DEFAULT_CHANNEL,
+        "deviceId": device_id,
+        "deviceType": DEFAULT_DEVICE_TYPE,
+        "nonce": nonce,
+        "source": DEFAULT_SOURCE,
+        "timestamp": timestamp,
+        "version": DEFAULT_APP_VERSION,
+    }
     if vin:
-        sign_input_parts.append(vin)
-    sign_input = "".join(sign_input_parts)
+        sign_fields["vin"] = vin
+    if body_params:
+        sign_fields.update(body_params)
+
+    sign_input = "".join(v for _, v in sorted(sign_fields.items()))
     return {
         "acceptLanguage": language,
         "channel": DEFAULT_CHANNEL,

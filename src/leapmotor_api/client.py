@@ -60,7 +60,7 @@ from .exceptions import (
     LeapmotorAuthError,
     LeapmotorMissingAppCertError,
 )
-from .models import Vehicle, VehicleStatus
+from .models import MessageList, Vehicle, VehicleStatus
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -277,6 +277,47 @@ class LeapmotorApiClient:
             cert=self.account_cert,
         )
         return self._parse_api_body(response["status_code"], response["body"], "car picture")
+
+    # ------------------------------------------------------------------
+    # Public API — Messages
+    # ------------------------------------------------------------------
+
+    def get_message_list(self, *, page_no: int = 1, page_size: int = 10) -> MessageList:
+        """Fetch the paginated message list."""
+        body_params = {"pageNo": str(page_no), "pageSize": str(page_size)}
+        headers = build_signed_headers(
+            sign_key=self.sign_key,
+            device_id=self.device_id,
+            language=self.language,
+            body_params=body_params,
+        )
+        headers.update(self._auth_headers(content_type="application/x-www-form-urlencoded"))
+        data = f"pageNo={page_no}&pageSize={page_size}"
+        response = self._post(
+            path="/carownerservice/oversea/message/v1/list",
+            headers=headers,
+            data=data,
+            cert=self.account_cert,
+        )
+        body = self._parse_api_body(response["status_code"], response["body"], "message list")
+        return MessageList.from_dict(body.get("data") or {})
+
+    def get_unread_message_count(self) -> int:
+        """Fetch the unread message count."""
+        headers = build_signed_headers(
+            sign_key=self.sign_key,
+            device_id=self.device_id,
+            language=self.language,
+        )
+        headers.update(self._auth_headers(content_type="application/x-www-form-urlencoded"))
+        response = self._post(
+            path="/carownerservice/oversea/message/v1/unread/count",
+            headers=headers,
+            data="",
+            cert=self.account_cert,
+        )
+        body = self._parse_api_body(response["status_code"], response["body"], "unread message count")
+        return (body.get("data") or {}).get("unread", 0)
 
     # ------------------------------------------------------------------
     # Public API — Remote Control

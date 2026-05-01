@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Added `Message` and `MessageList` models for notification messages
+- Added `get_message_list(page_no, page_size)` method to retrieve paginated messages
+- Added `get_unread_message_count()` method to get the number of unread messages
+- Added async variants of message methods to `AsyncLeapmotorApiClient`
+- Added `body_params` support to `build_signed_headers` for endpoints that include body parameters in the HMAC signature
+- Updated example usage script to display messages
+
 ### Changed
 - Remote control methods (`open_windows`, `close_windows`, `windows`, `control_sunshade`, `open_sunshade`, `close_sunshade`) now accept an optional `value` parameter to control intensity/position
 - AC methods (`ac_switch`, `quick_cool`, `quick_heat`, `windshield_defrost`) now accept an optional `params` dict to override default climate settings (temperature, wind level, etc.)
