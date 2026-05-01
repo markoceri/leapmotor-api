@@ -35,6 +35,7 @@ from .exceptions import (
 )
 from .models import (
     BatteryStatus,
+    ChargeState,
     ClimateStatus,
     ConnectivityStatus,
     DoorStatus,
@@ -52,6 +53,7 @@ from .models import (
 __all__ = [
     "__version__",
     "BatteryStatus",
+    "ChargeState",
     "ClimateStatus",
     "ConnectivityStatus",
     "DEFAULT_BASE_URL",
