@@ -50,6 +50,9 @@ path = "src/leapmotor_api/__init__.py"
 [tool.hatch.build.targets.wheel]
 packages = ["src/leapmotor_api"]
 
+[tool.hatch.build.targets.editable]
+packages = ["src/leapmotor_api"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
