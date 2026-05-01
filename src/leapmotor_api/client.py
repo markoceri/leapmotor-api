@@ -297,38 +297,48 @@ class LeapmotorApiClient:
     def find_vehicle(self, vin: str) -> dict[str, Any]:
         return self._remote_control(vin=vin, action=REMOTE_CTL_FIND_CAR)
 
-    def control_sunshade(self, vin: str) -> dict[str, Any]:
-        return self._remote_control(vin=vin, action=REMOTE_CTL_SUNSHADE)
+    def control_sunshade(self, vin: str, *, value: str | None = None) -> dict[str, Any]:
+        cmd_content = json.dumps({"value": value}, separators=(",", ":")) if value is not None else None
+        return self._remote_control(vin=vin, action=REMOTE_CTL_SUNSHADE, cmd_content=cmd_content)
 
-    def open_sunshade(self, vin: str) -> dict[str, Any]:
-        return self._remote_control(vin=vin, action=REMOTE_CTL_SUNSHADE_OPEN)
+    def open_sunshade(self, vin: str, *, value: str | None = None) -> dict[str, Any]:
+        cmd_content = json.dumps({"value": value}, separators=(",", ":")) if value is not None else None
+        return self._remote_control(vin=vin, action=REMOTE_CTL_SUNSHADE_OPEN, cmd_content=cmd_content)
 
-    def close_sunshade(self, vin: str) -> dict[str, Any]:
-        return self._remote_control(vin=vin, action=REMOTE_CTL_SUNSHADE_CLOSE)
+    def close_sunshade(self, vin: str, *, value: str | None = None) -> dict[str, Any]:
+        cmd_content = json.dumps({"value": value}, separators=(",", ":")) if value is not None else None
+        return self._remote_control(vin=vin, action=REMOTE_CTL_SUNSHADE_CLOSE, cmd_content=cmd_content)
 
     def battery_preheat(self, vin: str) -> dict[str, Any]:
         return self._remote_control(vin=vin, action=REMOTE_CTL_BATTERY_PREHEAT)
 
-    def windows(self, vin: str) -> dict[str, Any]:
-        return self._remote_control(vin=vin, action=REMOTE_CTL_WINDOWS)
+    def windows(self, vin: str, *, value: str | None = None) -> dict[str, Any]:
+        cmd_content = json.dumps({"value": value}, separators=(",", ":")) if value is not None else None
+        return self._remote_control(vin=vin, action=REMOTE_CTL_WINDOWS, cmd_content=cmd_content)
 
-    def open_windows(self, vin: str) -> dict[str, Any]:
-        return self._remote_control(vin=vin, action=REMOTE_CTL_WINDOWS_OPEN)
+    def open_windows(self, vin: str, *, value: str | None = None) -> dict[str, Any]:
+        cmd_content = json.dumps({"value": value}, separators=(",", ":")) if value is not None else None
+        return self._remote_control(vin=vin, action=REMOTE_CTL_WINDOWS_OPEN, cmd_content=cmd_content)
 
-    def close_windows(self, vin: str) -> dict[str, Any]:
-        return self._remote_control(vin=vin, action=REMOTE_CTL_WINDOWS_CLOSE)
+    def close_windows(self, vin: str, *, value: str | None = None) -> dict[str, Any]:
+        cmd_content = json.dumps({"value": value}, separators=(",", ":")) if value is not None else None
+        return self._remote_control(vin=vin, action=REMOTE_CTL_WINDOWS_CLOSE, cmd_content=cmd_content)
 
-    def ac_switch(self, vin: str) -> dict[str, Any]:
-        return self._remote_control(vin=vin, action=REMOTE_CTL_AC_SWITCH)
+    def ac_switch(self, vin: str, *, params: dict[str, str] | None = None) -> dict[str, Any]:
+        cmd_content = json.dumps(params, separators=(",", ":")) if params is not None else None
+        return self._remote_control(vin=vin, action=REMOTE_CTL_AC_SWITCH, cmd_content=cmd_content)
 
-    def quick_cool(self, vin: str) -> dict[str, Any]:
-        return self._remote_control(vin=vin, action=REMOTE_CTL_QUICK_COOL)
+    def quick_cool(self, vin: str, *, params: dict[str, str] | None = None) -> dict[str, Any]:
+        cmd_content = json.dumps(params, separators=(",", ":")) if params is not None else None
+        return self._remote_control(vin=vin, action=REMOTE_CTL_QUICK_COOL, cmd_content=cmd_content)
 
-    def quick_heat(self, vin: str) -> dict[str, Any]:
-        return self._remote_control(vin=vin, action=REMOTE_CTL_QUICK_HEAT)
+    def quick_heat(self, vin: str, *, params: dict[str, str] | None = None) -> dict[str, Any]:
+        cmd_content = json.dumps(params, separators=(",", ":")) if params is not None else None
+        return self._remote_control(vin=vin, action=REMOTE_CTL_QUICK_HEAT, cmd_content=cmd_content)
 
-    def windshield_defrost(self, vin: str) -> dict[str, Any]:
-        return self._remote_control(vin=vin, action=REMOTE_CTL_WINDSHIELD_DEFROST)
+    def windshield_defrost(self, vin: str, *, params: dict[str, str] | None = None) -> dict[str, Any]:
+        cmd_content = json.dumps(params, separators=(",", ":")) if params is not None else None
+        return self._remote_control(vin=vin, action=REMOTE_CTL_WINDSHIELD_DEFROST, cmd_content=cmd_content)
 
     def set_charge_limit(self, vin: str, charge_limit_percent: int) -> dict[str, Any]:
         """Set the charge limit while preserving the current charging plan values."""
@@ -446,7 +456,7 @@ class LeapmotorApiClient:
     # Private — Remote control
     # ------------------------------------------------------------------
 
-    def _remote_control(self, *, vin: str, action: str) -> dict[str, Any]:
+    def _remote_control(self, *, vin: str, action: str, cmd_content: str | None = None) -> dict[str, Any]:
         if not self.token:
             self.login()
         if not self.operation_password:
@@ -461,7 +471,7 @@ class LeapmotorApiClient:
         return self._remote_control_raw(
             vin=vehicle.vin,
             cmd_id=spec.cmd_id,
-            cmd_content=spec.cmd_content,
+            cmd_content=cmd_content if cmd_content is not None else spec.cmd_content,
             action_label=action,
             vehicle=vehicle,
         )

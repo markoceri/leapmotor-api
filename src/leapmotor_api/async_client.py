@@ -68,38 +68,68 @@ class AsyncLeapmotorApiClient:
     async def find_vehicle(self, vin: str) -> dict[str, Any]:
         return await asyncio.to_thread(self._client.find_vehicle, vin)
 
-    async def control_sunshade(self, vin: str) -> dict[str, Any]:
-        return await asyncio.to_thread(self._client.control_sunshade, vin)
+    async def control_sunshade(self, vin: str, *, value: str | None = None) -> dict[str, Any]:
+        kwargs: dict[str, str] = {}
+        if value is not None:
+            kwargs["value"] = value
+        return await asyncio.to_thread(self._client.control_sunshade, vin, **kwargs)
 
-    async def open_sunshade(self, vin: str) -> dict[str, Any]:
-        return await asyncio.to_thread(self._client.open_sunshade, vin)
+    async def open_sunshade(self, vin: str, *, value: str | None = None) -> dict[str, Any]:
+        kwargs: dict[str, str] = {}
+        if value is not None:
+            kwargs["value"] = value
+        return await asyncio.to_thread(self._client.open_sunshade, vin, **kwargs)
 
-    async def close_sunshade(self, vin: str) -> dict[str, Any]:
-        return await asyncio.to_thread(self._client.close_sunshade, vin)
+    async def close_sunshade(self, vin: str, *, value: str | None = None) -> dict[str, Any]:
+        kwargs: dict[str, str] = {}
+        if value is not None:
+            kwargs["value"] = value
+        return await asyncio.to_thread(self._client.close_sunshade, vin, **kwargs)
 
     async def battery_preheat(self, vin: str) -> dict[str, Any]:
         return await asyncio.to_thread(self._client.battery_preheat, vin)
 
-    async def windows(self, vin: str) -> dict[str, Any]:
-        return await asyncio.to_thread(self._client.windows, vin)
+    async def windows(self, vin: str, *, value: str | None = None) -> dict[str, Any]:
+        kwargs: dict[str, str] = {}
+        if value is not None:
+            kwargs["value"] = value
+        return await asyncio.to_thread(self._client.windows, vin, **kwargs)
 
-    async def open_windows(self, vin: str) -> dict[str, Any]:
-        return await asyncio.to_thread(self._client.open_windows, vin)
+    async def open_windows(self, vin: str, *, value: str | None = None) -> dict[str, Any]:
+        kwargs: dict[str, str] = {}
+        if value is not None:
+            kwargs["value"] = value
+        return await asyncio.to_thread(self._client.open_windows, vin, **kwargs)
 
-    async def close_windows(self, vin: str) -> dict[str, Any]:
-        return await asyncio.to_thread(self._client.close_windows, vin)
+    async def close_windows(self, vin: str, *, value: str | None = None) -> dict[str, Any]:
+        kwargs: dict[str, str] = {}
+        if value is not None:
+            kwargs["value"] = value
+        return await asyncio.to_thread(self._client.close_windows, vin, **kwargs)
 
-    async def ac_switch(self, vin: str) -> dict[str, Any]:
-        return await asyncio.to_thread(self._client.ac_switch, vin)
+    async def ac_switch(self, vin: str, *, params: dict[str, str] | None = None) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {}
+        if params is not None:
+            kwargs["params"] = params
+        return await asyncio.to_thread(self._client.ac_switch, vin, **kwargs)
 
-    async def quick_cool(self, vin: str) -> dict[str, Any]:
-        return await asyncio.to_thread(self._client.quick_cool, vin)
+    async def quick_cool(self, vin: str, *, params: dict[str, str] | None = None) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {}
+        if params is not None:
+            kwargs["params"] = params
+        return await asyncio.to_thread(self._client.quick_cool, vin, **kwargs)
 
-    async def quick_heat(self, vin: str) -> dict[str, Any]:
-        return await asyncio.to_thread(self._client.quick_heat, vin)
+    async def quick_heat(self, vin: str, *, params: dict[str, str] | None = None) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {}
+        if params is not None:
+            kwargs["params"] = params
+        return await asyncio.to_thread(self._client.quick_heat, vin, **kwargs)
 
-    async def windshield_defrost(self, vin: str) -> dict[str, Any]:
-        return await asyncio.to_thread(self._client.windshield_defrost, vin)
+    async def windshield_defrost(self, vin: str, *, params: dict[str, str] | None = None) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {}
+        if params is not None:
+            kwargs["params"] = params
+        return await asyncio.to_thread(self._client.windshield_defrost, vin, **kwargs)
 
     async def set_charge_limit(self, vin: str, charge_limit_percent: int) -> dict[str, Any]:
         return await asyncio.to_thread(self._client.set_charge_limit, vin, charge_limit_percent)

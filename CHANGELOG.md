@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- Remote control methods (`open_windows`, `close_windows`, `windows`, `control_sunshade`, `open_sunshade`, `close_sunshade`) now accept an optional `value` parameter to control intensity/position
+- AC methods (`ac_switch`, `quick_cool`, `quick_heat`, `windshield_defrost`) now accept an optional `params` dict to override default climate settings (temperature, wind level, etc.)
+- Internal `_remote_control` accepts optional `cmd_content` override for custom payloads
+
 ## [0.1.1] - 2026-05-01
 
 ### Added
