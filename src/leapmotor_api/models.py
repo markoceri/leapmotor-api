@@ -267,6 +267,97 @@ class IgnitionStatus:
     bcm_key_position_on3: bool | None = None
 
 
+@dataclass(slots=True)
+class VehicleStatus:
+    """Parsed vehicle status from the API.
+
+    Fields are grouped into typed sub-objects for clarity.
+    Use ``VehicleStatus.from_dict(raw)`` to build from the raw API dict.
+    """
+
+    battery: BatteryStatus = field(default_factory=BatteryStatus)
+    driving: DrivingStatus = field(default_factory=DrivingStatus)
+    location: LocationStatus = field(default_factory=LocationStatus)
+    climate: ClimateStatus = field(default_factory=ClimateStatus)
+    doors: DoorStatus = field(default_factory=DoorStatus)
+    windows: WindowStatus = field(default_factory=WindowStatus)
+    tires: TirePressure = field(default_factory=TirePressure)
+    connectivity: ConnectivityStatus = field(default_factory=ConnectivityStatus)
+    ignition: IgnitionStatus = field(default_factory=IgnitionStatus)
+
+    # -- Timestamps --
+    collect_time: datetime | None = None
+    create_time: datetime | None = None
+
+    # -- Raw dict for forward-compatibility --
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def from_dict(cls, status_data: dict[str, Any]) -> VehicleStatus:
+        """Build a ``VehicleStatus`` from the raw API status dict."""
+        # Parse timestamps
+        timestamps: dict[str, Any] = {}
+        for api_key, field_name in (("collectTime", "collect_time"), ("createTime", "create_time")):
+            raw_ts = status_data.get(api_key)
+            if isinstance(raw_ts, str):
+                with contextlib.suppress(ValueError):
+                    timestamps[field_name] = datetime.strptime(raw_ts, _DATETIME_FMT)  # noqa: DTZ007
+
+        return cls(
+            battery=BatteryStatus.from_dict(status_data),
+            driving=DrivingStatus(**_extract_fields(status_data, _DRIVING_FIELDS)),
+            location=LocationStatus(**_extract_fields(status_data, _LOCATION_FIELDS)),
+            climate=ClimateStatus(**_extract_fields(status_data, _CLIMATE_FIELDS)),
+            doors=DoorStatus(**_extract_fields(status_data, _DOOR_FIELDS)),
+            windows=WindowStatus(**_extract_fields(status_data, _WINDOW_FIELDS)),
+            tires=TirePressure(**_extract_fields(status_data, _TIRE_FIELDS)),
+            connectivity=ConnectivityStatus(**_extract_fields(status_data, _CONNECTIVITY_FIELDS)),
+            ignition=IgnitionStatus(**_extract_fields(status_data, _IGNITION_FIELDS)),
+            raw=status_data,
+            **timestamps,
+        )
+
+    # -- Convenience properties (delegate to sub-objects) --
+
+    @property
+    def is_locked(self) -> bool | None:
+        """True if the vehicle is locked."""
+        return self.doors.is_locked
+
+    @property
+    def is_charging(self) -> bool | None:
+        """True if the vehicle is currently charger plugin connected, is parked and the charging is started."""
+        return (
+            self.battery.charge_state in (ChargeState.AC_CONNECTED, ChargeState.DC_CONNECTED)
+            and self.driving.is_parked
+            and self.battery.is_charging
+        )
+
+    @property
+    def is_regening(self) -> bool | None:
+        """True if the vehicle is currently regeneratively braking (i.e., driving with battery charging)."""
+        return (
+            self.battery.is_charging
+            and not self.driving.is_parked
+            and self.battery.charge_state == ChargeState.NOT_CONNECTED
+        )
+
+    @property
+    def is_parked(self) -> bool | None:
+        """True if the vehicle is stationary."""
+        return self.driving.is_parked
+
+    @property
+    def tire_pressure(self) -> TirePressure:
+        """Structured tire pressure object."""
+        return self.tires
+
+    @property
+    def tire_pressure_bar(self) -> dict[str, float | None]:
+        """Tire pressures converted to bar (raw values are in kPa)."""
+        return self.tires.all_bar
+
+
 # ---------------------------------------------------------------------------
 # API key → (sub-object attr, field name) mapping
 # ---------------------------------------------------------------------------
@@ -349,84 +440,6 @@ _DATETIME_FMT = "%Y-%m-%d %H:%M:%S"
 def _extract_fields(data: dict[str, Any], mapping: dict[str, str]) -> dict[str, Any]:
     """Extract fields from *data* using an API-key → field-name mapping."""
     return {field_name: data[api_key] for api_key, field_name in mapping.items() if api_key in data}
-
-
-@dataclass(slots=True)
-class VehicleStatus:
-    """Parsed vehicle status from the API.
-
-    Fields are grouped into typed sub-objects for clarity.
-    Use ``VehicleStatus.from_dict(raw)`` to build from the raw API dict.
-    """
-
-    battery: BatteryStatus = field(default_factory=BatteryStatus)
-    driving: DrivingStatus = field(default_factory=DrivingStatus)
-    location: LocationStatus = field(default_factory=LocationStatus)
-    climate: ClimateStatus = field(default_factory=ClimateStatus)
-    doors: DoorStatus = field(default_factory=DoorStatus)
-    windows: WindowStatus = field(default_factory=WindowStatus)
-    tires: TirePressure = field(default_factory=TirePressure)
-    connectivity: ConnectivityStatus = field(default_factory=ConnectivityStatus)
-    ignition: IgnitionStatus = field(default_factory=IgnitionStatus)
-
-    # -- Timestamps --
-    collect_time: datetime | None = None
-    create_time: datetime | None = None
-
-    # -- Raw dict for forward-compatibility --
-    raw: dict[str, Any] = field(default_factory=dict, repr=False)
-
-    @classmethod
-    def from_dict(cls, status_data: dict[str, Any]) -> VehicleStatus:
-        """Build a ``VehicleStatus`` from the raw API status dict."""
-        # Parse timestamps
-        timestamps: dict[str, Any] = {}
-        for api_key, field_name in (("collectTime", "collect_time"), ("createTime", "create_time")):
-            raw_ts = status_data.get(api_key)
-            if isinstance(raw_ts, str):
-                with contextlib.suppress(ValueError):
-                    timestamps[field_name] = datetime.strptime(raw_ts, _DATETIME_FMT)  # noqa: DTZ007
-
-        return cls(
-            battery=BatteryStatus(**_extract_fields(status_data, _BATTERY_FIELDS)),
-            driving=DrivingStatus(**_extract_fields(status_data, _DRIVING_FIELDS)),
-            location=LocationStatus(**_extract_fields(status_data, _LOCATION_FIELDS)),
-            climate=ClimateStatus(**_extract_fields(status_data, _CLIMATE_FIELDS)),
-            doors=DoorStatus(**_extract_fields(status_data, _DOOR_FIELDS)),
-            windows=WindowStatus(**_extract_fields(status_data, _WINDOW_FIELDS)),
-            tires=TirePressure(**_extract_fields(status_data, _TIRE_FIELDS)),
-            connectivity=ConnectivityStatus(**_extract_fields(status_data, _CONNECTIVITY_FIELDS)),
-            ignition=IgnitionStatus(**_extract_fields(status_data, _IGNITION_FIELDS)),
-            raw=status_data,
-            **timestamps,
-        )
-
-    # -- Convenience properties (delegate to sub-objects) --
-
-    @property
-    def is_locked(self) -> bool | None:
-        """True if the vehicle is locked."""
-        return self.doors.is_locked
-
-    @property
-    def is_charging(self) -> bool | None:
-        """True if the vehicle is currently charging."""
-        return self.battery.is_charging
-
-    @property
-    def is_parked(self) -> bool | None:
-        """True if the vehicle is stationary."""
-        return self.driving.is_parked
-
-    @property
-    def tire_pressure(self) -> TirePressure:
-        """Structured tire pressure object."""
-        return self.tires
-
-    @property
-    def tire_pressure_bar(self) -> dict[str, float | None]:
-        """Tire pressures converted to bar (raw values are in kPa)."""
-        return self.tires.all_bar
 
 
 @dataclass(frozen=True, slots=True)
