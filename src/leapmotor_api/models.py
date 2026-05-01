@@ -117,31 +117,38 @@ class BatteryStatus:
         """Battery power in kW, computed from voltage and current."""
         if self.battery_voltage is None or self.battery_current is None:
             return None
-        return round(abs(self.battery_voltage * self.battery_current) / 1000, 2)
+        return round((self.battery_voltage * self.battery_current) / 1000, 3)
 
     @property
     def charging_power_kw(self) -> float | None:
-        """Charging power in kW (None when current below meaningful threshold)."""
-        if self.battery_current is None or self.battery_voltage is None:
+        """Charging power in kW. Negative current."""
+        if self.battery_power is None:
             return None
-        if abs(self.battery_current) < 3.0:
+        return abs(self.battery_power) if self.battery_power < 0 else 0.0
+
+    @property
+    def discharging_power_kw(self) -> float | None:
+        """Discharging power in kW. Positive current."""
+        if self.battery_power is None:
             return None
-        return round(abs(self.battery_current * self.battery_voltage) / 1000.0, 3)
+        return self.battery_power if self.battery_power > 0 else 0.0
 
     @property
     def is_charging(self) -> bool | None:
-        """True if the vehicle is currently charging (3-level detection)."""
-        # Level 1: current + remaining time both available
-        if self.battery_current is not None and self.charge_remain_time is not None:
-            return abs(self.battery_current) >= 1.0
-        # Level 2: power (with min-current threshold) available
-        power = self.charging_power_kw
-        if power is not None:
-            return power >= 1.0 and self.charge_remain_time is not None
-        # Level 3: legacy fallback using charge_state
-        if self.charge_state is None:
-            return None
-        return self.charge_state in (1, 2, 3) and self.charge_remain_time is not None
+        """True if the battery is actively charging.
+        This property analyzes the charging status from the point of view of the battery only, not the vehicle.
+            For example, it returns True if the vehicle is currently driving and the battery is charging
+            due to regenerative braking.
+        The vehicle's overall charging status (e.g. whether it's plugged in and charging) can be determined
+        from the ``VehicleStatus.is_charging`` property, which also considers the driving status.
+        """
+        return bool(self.charging_power_kw is not None and self.charge_remain_time is not None)
+
+    @property
+    def is_discharging(self) -> bool | None:
+        """True if the battery is actively discharging (e.g., driving or powering onboard systems)."""
+        return bool(self.discharging_power_kw is not None and self.discharging_power_kw > 0)
+
 
 
 @dataclass(slots=True)
