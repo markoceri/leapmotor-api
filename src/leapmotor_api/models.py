@@ -51,6 +51,36 @@ class Vehicle:
     module_rights: str | None = None
     allocation_code: str | None = None
 
+    # -- Raw dict for debug --
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any], is_shared: bool) -> Vehicle:
+        """Build a Vehicle from a raw API dict."""
+        return cls(
+            vin=data.get("vin"),
+            email=data.get("email"),
+            plate_number=data.get("plateNumber"),
+            car_id=str(data["carId"]) if data.get("carId") is not None else None,
+            car_type=str(data.get("carType")),
+            user_nickname=data.get("userNickname"),
+            vehicle_nickname=data.get("vehicleNickname"),
+            mobile_number=data.get("mobileNumber"),
+            out_color=data.get("outColor"),
+            is_shared=is_shared,
+            share_time=data.get("shareTime"),
+            expire_time=data.get("expireTime"),
+            duration_type=data.get("durationType"),
+            seat_layout=data.get("seatLayout"),
+            rudder=data.get("rudder"),
+            year=data.get("year"),
+            rights=data.get("rights"),
+            abilities=data.get("abilities"),
+            module_rights=data.get("moduleRights"),
+            allocation_code=data.get("allocationCode"),
+            raw=data,
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class TirePressure:
