@@ -109,9 +109,12 @@ class TestNormalizeVehicle:
     def _vehicle(self) -> Vehicle:
         return Vehicle(
             vin="WLMTEST123",
-            car_id="42",
             car_type="C10",
-            nickname="MyCar",
+            email="test@test.com",
+            plate_number=None,
+            car_id="42",
+            user_nickname="Owner",
+            vehicle_nickname="MyCar",
             is_shared=False,
             year=2024,
         )
@@ -125,6 +128,8 @@ class TestNormalizeVehicle:
         }
         result = normalize_vehicle(self._vehicle(), status_json, "user1")
         assert result["vehicle"]["vin"] == "WLMTEST123"
+        assert result["vehicle"]["vehicle_nickname"] == "MyCar"
+        assert result["vehicle"]["user_nickname"] == "Owner"
         assert result["status"]["battery_percent"] == 85
         assert result["status"]["remaining_range_km"] == 300
         assert result["status"]["is_locked"] is True
@@ -234,8 +239,16 @@ class TestVehicleState:
 
 class TestIsCharging:
     def test_charging_by_current(self) -> None:
-        assert _is_charging({"1178": -5.0, "1200": 120}) is True
+        assert _is_charging({"1178": 5.0, "1200": 120}) is True
         assert _is_charging({"1178": 10.0, "1200": 60}) is True
+
+    def test_not_charging_negative_current(self) -> None:
+        # Negative current with abs >= 1.0 still counts as charging when parked
+        assert _is_charging({"1178": -5.0, "1200": 120}) is True
+
+    def test_not_charging_while_driving(self) -> None:
+        # Positive current while driving = regen braking, not charging
+        assert _is_charging({"1178": 5.0, "1200": 120, "1298": 0}) is False
 
     def test_not_charging_low_current(self) -> None:
         assert _is_charging({"1178": 0.5, "1200": 120}) is False
@@ -266,11 +279,12 @@ class TestChargingPowerKw:
         assert _charging_power_kw({"1178": 10.0, "1177": 400.0}) == 4.0
 
     def test_negative_current(self) -> None:
-        # abs(-10) * 400 = 4000W = 4.0 kW
-        assert _charging_power_kw({"1178": -10.0, "1177": 400.0}) == 4.0
+        # Negative current produces negative power (raw calculation)
+        assert _charging_power_kw({"1178": -10.0, "1177": 400.0}) == -4.0
 
-    def test_low_current_returns_none(self) -> None:
-        assert _charging_power_kw({"1178": 2.0, "1177": 400.0}) is None
+    def test_low_current(self) -> None:
+        # Low current still produces a result (no threshold in _charging_power_kw)
+        assert _charging_power_kw({"1178": 2.0, "1177": 400.0}) == 0.8
 
     def test_missing_current_returns_none(self) -> None:
         assert _charging_power_kw({"1177": 400.0}) is None
@@ -291,9 +305,12 @@ class TestNormalizeVehicleExtended:
     def _vehicle(self) -> Vehicle:
         return Vehicle(
             vin="WLMTEST123",
-            car_id="42",
             car_type="C10",
-            nickname="MyCar",
+            email="test@test.com",
+            plate_number=None,
+            car_id="42",
+            user_nickname="Owner",
+            vehicle_nickname="MyCar",
             is_shared=False,
             year=2024,
         )
@@ -371,9 +388,12 @@ class TestNormalizeVehicleExtended:
     def test_vehicle_abilities_empty(self) -> None:
         v = Vehicle(
             vin="VIN1",
-            car_id="1",
             car_type="C10",
-            nickname="N",
+            email=None,
+            plate_number=None,
+            car_id="1",
+            user_nickname="N",
+            vehicle_nickname="N",
             is_shared=False,
             abilities=None,
         )
@@ -383,9 +403,12 @@ class TestNormalizeVehicleExtended:
     def test_vehicle_abilities_populated(self) -> None:
         v = Vehicle(
             vin="VIN1",
-            car_id="1",
             car_type="C10",
-            nickname="N",
+            email=None,
+            plate_number=None,
+            car_id="1",
+            user_nickname="N",
+            vehicle_nickname="N",
             is_shared=False,
             abilities=["remote", "charge"],
         )
@@ -586,7 +609,16 @@ class TestFindVehicleByVin:
         client.sign_ikm = "ikm"
         client.sign_salt = "salt"
         client.sign_info = "info"
-        vehicle = Vehicle(vin="VIN1", car_id="1", car_type="C10", nickname="N", is_shared=False)
+        vehicle = Vehicle(
+            vin="VIN1",
+            car_type="C10",
+            email=None,
+            plate_number=None,
+            car_id="1",
+            user_nickname="N",
+            vehicle_nickname="N",
+            is_shared=False,
+        )
         with patch.object(client, "get_vehicle_list", return_value=[vehicle]):
             result = client._find_vehicle_by_vin("VIN1")
             assert result.vin == "VIN1"

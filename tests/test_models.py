@@ -9,6 +9,7 @@ import pytest
 
 from leapmotor_api.models import (
     BatteryStatus,
+    ChargeState,
     DoorStatus,
     DrivingStatus,
     RemoteActionResult,
@@ -27,29 +28,90 @@ class TestVehicle:
     def test_basic_creation(self) -> None:
         v = Vehicle(
             vin="WLMTEST123456",
-            car_id="42",
             car_type="C10",
-            nickname="MyCar",
+            email="test@test.com",
+            plate_number="AB123CD",
+            car_id="42",
+            user_nickname="Owner",
+            vehicle_nickname="MyCar",
             is_shared=False,
             year=2024,
         )
         assert v.vin == "WLMTEST123456"
         assert v.car_id == "42"
         assert v.car_type == "C10"
-        assert v.nickname == "MyCar"
+        assert v.email == "test@test.com"
+        assert v.plate_number == "AB123CD"
+        assert v.user_nickname == "Owner"
+        assert v.vehicle_nickname == "MyCar"
         assert v.is_shared is False
         assert v.year == 2024
 
     def test_optional_fields_default_none(self) -> None:
-        v = Vehicle(vin="VIN1", car_id=None, car_type="C11", nickname=None, is_shared=True)
+        v = Vehicle(
+            vin="VIN1",
+            car_type="C11",
+            email=None,
+            plate_number=None,
+            car_id=None,
+            user_nickname=None,
+            vehicle_nickname=None,
+        )
         assert v.year is None
         assert v.rights is None
         assert v.abilities is None
         assert v.module_rights is None
+        assert v.mobile_number is None
+        assert v.out_color is None
 
     def test_shared_vehicle(self) -> None:
-        v = Vehicle(vin="VIN2", car_id="10", car_type="C10", nickname="Shared", is_shared=True)
+        v = Vehicle(
+            vin="VIN2",
+            car_type="C10",
+            email=None,
+            plate_number=None,
+            car_id="10",
+            user_nickname="Shared",
+            vehicle_nickname="SharedCar",
+            is_shared=True,
+        )
         assert v.is_shared is True
+
+    def test_from_dict(self) -> None:
+        data: dict[str, Any] = {
+            "vin": "WLMTEST123456",
+            "carType": "C10",
+            "email": "test@test.com",
+            "plateNumber": "AB123CD",
+            "carId": 42,
+            "userNickname": "Owner",
+            "vehicleNickname": "MyCar",
+            "mobileNumber": "+391234567890",
+            "outColor": "white",
+            "year": 2024,
+            "abilities": ["remote", "charge"],
+        }
+        v = Vehicle.from_dict(data, is_shared=False)
+        assert v.vin == "WLMTEST123456"
+        assert v.car_type == "C10"
+        assert v.email == "test@test.com"
+        assert v.plate_number == "AB123CD"
+        assert v.car_id == "42"
+        assert v.user_nickname == "Owner"
+        assert v.vehicle_nickname == "MyCar"
+        assert v.mobile_number == "+391234567890"
+        assert v.out_color == "white"
+        assert v.is_shared is False
+        assert v.year == 2024
+        assert v.abilities == ["remote", "charge"]
+        assert v.raw == data
+
+    def test_from_dict_shared(self) -> None:
+        data: dict[str, Any] = {"vin": "VIN1", "carType": "C11", "carId": 1}
+        v = Vehicle.from_dict(data, is_shared=True)
+        assert v.is_shared is True
+        assert v.email is None
+        assert v.plate_number is None
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +180,22 @@ class TestTirePressure:
 # ---------------------------------------------------------------------------
 
 
+class TestChargeState:
+    def test_enum_values(self) -> None:
+        assert ChargeState.NOT_CONNECTED == 0
+        assert ChargeState.AC_CONNECTED == 1
+        assert ChargeState.DC_CONNECTED == 2
+
+    def test_enum_from_int(self) -> None:
+        assert ChargeState(0) is ChargeState.NOT_CONNECTED
+        assert ChargeState(1) is ChargeState.AC_CONNECTED
+        assert ChargeState(2) is ChargeState.DC_CONNECTED
+
+    def test_invalid_value_raises(self) -> None:
+        with pytest.raises(ValueError):
+            ChargeState(99)
+
+
 class TestBatteryStatus:
     def test_dump_energy_kwh(self) -> None:
         bs = BatteryStatus(dump_energy=45000)
@@ -127,9 +205,13 @@ class TestBatteryStatus:
         bs = BatteryStatus()
         assert bs.dump_energy_kwh is None
 
-    def test_battery_power(self) -> None:
+    def test_battery_power_positive(self) -> None:
         bs = BatteryStatus(battery_voltage=400.0, battery_current=50.0)
         assert bs.battery_power == 20.0
+
+    def test_battery_power_negative(self) -> None:
+        bs = BatteryStatus(battery_voltage=400.0, battery_current=-10.0)
+        assert bs.battery_power == -4.0
 
     def test_battery_power_none_voltage(self) -> None:
         bs = BatteryStatus(battery_current=50.0)
@@ -139,41 +221,97 @@ class TestBatteryStatus:
         bs = BatteryStatus(battery_voltage=400.0)
         assert bs.battery_power is None
 
-    def test_charging_power_kw(self) -> None:
-        bs = BatteryStatus(battery_voltage=400.0, battery_current=10.0)
+    def test_charging_power_kw_negative_current(self) -> None:
+        """Negative current means charging (current flows into battery)."""
+        bs = BatteryStatus(battery_voltage=400.0, battery_current=-10.0)
         assert bs.charging_power_kw == 4.0
 
-    def test_charging_power_kw_below_threshold(self) -> None:
-        bs = BatteryStatus(battery_voltage=400.0, battery_current=2.0)
-        assert bs.charging_power_kw is None
+    def test_charging_power_kw_positive_current(self) -> None:
+        """Positive current means discharging, so charging power is 0."""
+        bs = BatteryStatus(battery_voltage=400.0, battery_current=10.0)
+        assert bs.charging_power_kw == 0.0
 
     def test_charging_power_kw_none(self) -> None:
         bs = BatteryStatus()
         assert bs.charging_power_kw is None
 
-    def test_is_charging_by_current(self) -> None:
-        bs = BatteryStatus(battery_current=10.0, charge_remain_time=60)
-        assert bs.is_charging is True
+    def test_discharging_power_kw_positive_current(self) -> None:
+        """Positive current means discharging."""
+        bs = BatteryStatus(battery_voltage=400.0, battery_current=50.0)
+        assert bs.discharging_power_kw == 20.0
 
-    def test_is_charging_low_current(self) -> None:
-        bs = BatteryStatus(battery_current=0.5, charge_remain_time=60)
-        assert bs.is_charging is False
+    def test_discharging_power_kw_negative_current(self) -> None:
+        """Negative current means charging, so discharging power is 0."""
+        bs = BatteryStatus(battery_voltage=400.0, battery_current=-10.0)
+        assert bs.discharging_power_kw == 0.0
 
-    def test_is_charging_legacy_state(self) -> None:
-        bs = BatteryStatus(charge_state=1, charge_remain_time=60)
-        assert bs.is_charging is True
-
-    def test_is_charging_legacy_not_charging(self) -> None:
-        bs = BatteryStatus(charge_state=0, charge_remain_time=60)
-        assert bs.is_charging is False
-
-    def test_is_charging_none(self) -> None:
+    def test_discharging_power_kw_none(self) -> None:
         bs = BatteryStatus()
-        assert bs.is_charging is None
+        assert bs.discharging_power_kw is None
 
-    def test_is_charging_no_remain_time(self) -> None:
-        bs = BatteryStatus(charge_state=1)
+    def test_is_charging_true(self) -> None:
+        """is_charging is True when charging_power_kw is available and charge_remain_time is set."""
+        bs = BatteryStatus(battery_voltage=400.0, battery_current=-10.0, charge_remain_time=60)
+        assert bs.is_charging is True
+
+    def test_is_charging_false_no_remain_time(self) -> None:
+        bs = BatteryStatus(battery_voltage=400.0, battery_current=-10.0)
         assert bs.is_charging is False
+
+    def test_is_charging_false_no_power_data(self) -> None:
+        bs = BatteryStatus(charge_remain_time=60)
+        assert bs.is_charging is False
+
+    def test_is_charging_false_empty(self) -> None:
+        bs = BatteryStatus()
+        assert bs.is_charging is False
+
+    def test_is_discharging_true(self) -> None:
+        bs = BatteryStatus(battery_voltage=400.0, battery_current=50.0)
+        assert bs.is_discharging is True
+
+    def test_is_discharging_false_charging(self) -> None:
+        bs = BatteryStatus(battery_voltage=400.0, battery_current=-10.0)
+        assert bs.is_discharging is False
+
+    def test_is_discharging_false_no_data(self) -> None:
+        bs = BatteryStatus()
+        assert bs.is_discharging is False
+
+    def test_from_dict_full(self) -> None:
+        data: dict[str, Any] = {
+            "soc": 85,
+            "chargeState": 1,
+            "chargeRemainTime": 120,
+            "chargesocSetting": 80,
+            "chargeTimeSetting": "08:00",
+            "dcInputFastCharge": 1,
+            "dumpEnergy": 50000,
+            "batteryCurrent": -15.5,
+            "batteryVoltage": 400.0,
+            "expectedMileage": 300,
+        }
+        bs = BatteryStatus.from_dict(data)
+        assert bs.soc == 85
+        assert bs.charge_state is ChargeState.AC_CONNECTED
+        assert bs.charge_remain_time == 120
+        assert bs.charge_soc_setting == 80
+        assert bs.charge_time_setting == "08:00"
+        assert bs.dc_input_fast_charge == 1
+        assert bs.dump_energy == 50000
+        assert bs.battery_current == -15.5
+        assert bs.battery_voltage == 400.0
+        assert bs.expected_mileage == 300
+
+    def test_from_dict_invalid_charge_state(self) -> None:
+        data: dict[str, Any] = {"chargeState": 99}
+        bs = BatteryStatus.from_dict(data)
+        assert bs.charge_state is None
+
+    def test_from_dict_empty(self) -> None:
+        bs = BatteryStatus.from_dict({})
+        assert bs.soc is None
+        assert bs.charge_state is None
 
 
 # ---------------------------------------------------------------------------
@@ -236,17 +374,17 @@ class TestVehicleStatusFromDict:
             "chargeRemainTime": 120,
             "chargesocSetting": 80,
             "dumpEnergy": 50000,
-            "batteryCurrent": 15.5,
+            "batteryCurrent": -15.5,
             "batteryVoltage": 400.0,
             "expectedMileage": 300,
         }
         vs = VehicleStatus.from_dict(data)
         assert vs.battery.soc == 85
-        assert vs.battery.charge_state == 1
+        assert vs.battery.charge_state is ChargeState.AC_CONNECTED
         assert vs.battery.charge_remain_time == 120
         assert vs.battery.charge_soc_setting == 80
         assert vs.battery.dump_energy == 50000
-        assert vs.battery.battery_current == 15.5
+        assert vs.battery.battery_current == -15.5
         assert vs.battery.battery_voltage == 400.0
         assert vs.battery.expected_mileage == 300
 
@@ -357,9 +495,71 @@ class TestVehicleStatusFromDict:
         assert vs.is_locked is True
 
     def test_convenience_is_charging(self) -> None:
-        data: dict[str, Any] = {"batteryCurrent": 10.0, "chargeRemainTime": 60}
+        data: dict[str, Any] = {
+            "chargeState": 1,
+            "batteryCurrent": -10.0,
+            "batteryVoltage": 400.0,
+            "chargeRemainTime": 60,
+            "speed": 0,
+        }
         vs = VehicleStatus.from_dict(data)
         assert vs.is_charging is True
+
+    def test_convenience_is_charging_false_not_connected(self) -> None:
+        data: dict[str, Any] = {
+            "chargeState": 0,
+            "batteryCurrent": -10.0,
+            "batteryVoltage": 400.0,
+            "chargeRemainTime": 60,
+            "speed": 0,
+        }
+        vs = VehicleStatus.from_dict(data)
+        assert vs.is_charging is False
+
+    def test_convenience_is_charging_false_while_driving(self) -> None:
+        data: dict[str, Any] = {
+            "chargeState": 1,
+            "batteryCurrent": -10.0,
+            "batteryVoltage": 400.0,
+            "chargeRemainTime": 60,
+            "speed": 50,
+        }
+        vs = VehicleStatus.from_dict(data)
+        assert vs.is_charging is False
+
+    def test_convenience_is_regening(self) -> None:
+        """Regen: battery charging while driving and not plugged in."""
+        data: dict[str, Any] = {
+            "chargeState": 0,
+            "batteryCurrent": -5.0,
+            "batteryVoltage": 400.0,
+            "chargeRemainTime": 60,
+            "speed": 50,
+        }
+        vs = VehicleStatus.from_dict(data)
+        assert vs.is_regening is True
+
+    def test_convenience_is_regening_false_when_parked(self) -> None:
+        data: dict[str, Any] = {
+            "chargeState": 0,
+            "batteryCurrent": -5.0,
+            "batteryVoltage": 400.0,
+            "chargeRemainTime": 60,
+            "speed": 0,
+        }
+        vs = VehicleStatus.from_dict(data)
+        assert vs.is_regening is False
+
+    def test_convenience_is_regening_false_when_connected(self) -> None:
+        data: dict[str, Any] = {
+            "chargeState": 1,
+            "batteryCurrent": -5.0,
+            "batteryVoltage": 400.0,
+            "chargeRemainTime": 60,
+            "speed": 50,
+        }
+        vs = VehicleStatus.from_dict(data)
+        assert vs.is_regening is False
 
     def test_convenience_is_parked(self) -> None:
         data: dict[str, Any] = {"speed": 0}
