@@ -32,7 +32,7 @@ client.login()
 vehicles = client.get_vehicle_list()
 
 for vehicle in vehicles:
-    print(f"{vehicle.vin} ({vehicle.car_type}) — {vehicle.nickname}")
+    print(f"{vehicle.vin} ({vehicle.car_type}) — {vehicle.vehicle_nickname}")
     status = client.get_vehicle_status(vehicle)
     print(f"  Battery: {status.battery.soc}%")
     print(f"  Range: {status.battery.expected_mileage} km")
@@ -55,13 +55,22 @@ status = client.get_vehicle_status(vehicle)
 # Battery & charging
 status.battery.soc                  # int | None — state of charge %
 status.battery.expected_mileage     # int | None — remaining range km
+status.battery.charge_state         # ChargeState | None — NOT_CONNECTED, AC_CONNECTED, DC_CONNECTED
 status.battery.is_charging          # bool | None
+status.battery.is_discharging       # bool | None
 status.battery.charging_power_kw    # float | None
+status.battery.discharging_power_kw # float | None
+status.battery.battery_power        # float | None — power in kW (voltage × current)
 status.battery.dump_energy_kwh      # float | None — available energy in kWh
+status.battery.battery_voltage      # float | None
+status.battery.battery_current      # float | None
+status.battery.charge_remain_time   # int | None — minutes remaining
+status.battery.charge_soc_setting   # int | None — charge limit %
 
 # Driving
 status.driving.total_mileage        # int | None — odometer km
 status.driving.speed                # int | None
+status.driving.gear_status          # int | None
 status.driving.is_parked            # bool | None
 
 # Location
@@ -70,23 +79,48 @@ status.location.longitude           # float | None
 
 # Climate
 status.climate.ac_switch            # bool | None
+status.climate.ac_setting           # float | None — target temperature
+status.climate.ac_air_volume        # int | None
 status.climate.outdoor_temp         # int | None
+status.climate.ptc_state            # int | None
 
 # Doors & locks
 status.doors.is_locked              # bool | None
+status.doors.bbcm_back_door_status  # bool | None — trunk
 
 # Windows
 status.windows.left_front_window_percent   # int | None
+status.windows.right_front_window_percent  # int | None
+status.windows.left_rear_window_percent    # int | None
+status.windows.right_rear_window_percent   # int | None
+status.windows.sun_shade                   # int | None
 
 # Tire pressure
 status.tires.front_left_bar         # float | None — pressure in bar
+status.tires.front_right_bar        # float | None
+status.tires.rear_left_bar          # float | None
+status.tires.rear_right_bar         # float | None
 status.tires.all_ok                 # bool | None — all pressures normal
+status.tires.all_bar                # dict[str, float | None]
 
 # Connectivity
 status.connectivity.bluetooth_state # bool | None
+status.connectivity.hotspot_state   # bool | None
+
+# Ignition
+status.ignition.bcm_key_position_on1  # bool | None
+status.ignition.bcm_key_position_on3  # bool | None
+
+# Top-level convenience properties
+status.is_locked                    # bool | None
+status.is_charging                  # bool | None — plugged in, parked, and charging
+status.is_regening                  # bool | None — regenerative braking
+status.is_parked                    # bool | None
+status.tire_pressure_bar            # dict[str, float | None]
 
 # Timestamps
 status.collect_time                 # datetime | None
+status.create_time                  # datetime | None
 ```
 
 ### Raw API data
