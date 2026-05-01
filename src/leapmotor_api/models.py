@@ -31,14 +31,25 @@ class Vehicle:
     """Vehicle metadata from the vehicle list."""
 
     vin: str
-    car_id: str | None
     car_type: str
-    nickname: str | None
-    is_shared: bool
+    email: str | None
+    plate_number: str | None
+    car_id: str | None
+    user_nickname: str | None
+    vehicle_nickname: str | None
+    mobile_number: str | None = None
+    out_color: str | None = None
+    is_shared: bool = False
+    share_time: int | None = None
+    expire_time: int | None = None
+    duration_type: int | None = None
+    seat_layout: str | None = None
+    rudder: str | None = None
     year: int | None = None
     rights: str | None = None
     abilities: list[str] | None = None
     module_rights: str | None = None
+    allocation_code: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

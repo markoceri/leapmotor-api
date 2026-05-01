@@ -229,14 +229,25 @@ class LeapmotorApiClient:
                 vehicles.append(
                     Vehicle(
                         vin=str(vin),
+                        email=item.get("email"),
+                        plate_number=item.get("plateNumber"),
                         car_id=str(item["carId"]) if item.get("carId") is not None else None,
                         car_type=str(item.get("carType")),
-                        nickname=item.get("nickName"),
+                        user_nickname=item.get("nickName"),
+                        vehicle_nickname=item.get("vinNickname"),
+                        mobile_number=item.get("mobileNumber"),
+                        out_color=item.get("outColor"),
                         is_shared=is_shared,
+                        share_time=item.get("shareTime"),
+                        expire_time=item.get("expireTime"),
+                        duration_type=item.get("durationType"),
+                        seat_layout=item.get("seatLayout"),
+                        rudder=item.get("rudder"),
                         year=_safe_int(item.get("year")),
                         rights=item.get("rightList"),
                         abilities=[str(value) for value in item.get("abilities") or []],
                         module_rights=item.get("moduleRights"),
+                        allocation_code=item.get("allocationCode"),
                     )
                 )
         return vehicles
