@@ -95,7 +95,7 @@ class BatteryStatus:
     """Battery and charging status."""
 
     soc: int | None = None
-    charge_state: int | None = None
+    charge_state: ChargeState | None = None
     charge_remain_time: int | None = None
     charge_soc_setting: int | None = None
     charge_time_setting: str | None = None
