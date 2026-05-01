@@ -149,6 +149,28 @@ class BatteryStatus:
         """True if the battery is actively discharging (e.g., driving or powering onboard systems)."""
         return bool(self.discharging_power_kw is not None and self.discharging_power_kw > 0)
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> BatteryStatus:
+        """Build a BatteryStatus from a raw API dict."""
+        raw_charge_state = data.get("chargeState")
+        charge_state: ChargeState | None = None
+        if raw_charge_state is not None:
+            try:
+                charge_state = ChargeState(raw_charge_state)
+            except ValueError:
+                charge_state = None
+        return cls(
+            soc=data.get("soc"),
+            charge_state=charge_state,
+            charge_remain_time=data.get("chargeRemainTime"),
+            charge_soc_setting=data.get("chargesocSetting"),
+            charge_time_setting=data.get("chargeTimeSetting"),
+            dc_input_fast_charge=data.get("dcInputFastCharge"),
+            dump_energy=data.get("dumpEnergy"),
+            battery_current=data.get("batteryCurrent"),
+            battery_voltage=data.get("batteryVoltage"),
+            expected_mileage=data.get("expectedMileage"),
+        )
 
 
 @dataclass(slots=True)
@@ -250,18 +272,6 @@ class IgnitionStatus:
 # API key → (sub-object attr, field name) mapping
 # ---------------------------------------------------------------------------
 
-_BATTERY_FIELDS: dict[str, str] = {
-    "soc": "soc",
-    "chargeState": "charge_state",
-    "chargeRemainTime": "charge_remain_time",
-    "chargesocSetting": "charge_soc_setting",
-    "chargeTimeSetting": "charge_time_setting",
-    "dcInputFastCharge": "dc_input_fast_charge",
-    "dumpEnergy": "dump_energy",
-    "batteryCurrent": "battery_current",
-    "batteryVoltage": "battery_voltage",
-    "expectedMileage": "expected_mileage",
-}
 
 _DRIVING_FIELDS: dict[str, str] = {
     "speed": "speed",
