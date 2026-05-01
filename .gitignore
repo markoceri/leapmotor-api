@@ -23,3 +23,7 @@ htmlcov/
 # Distribution
 *.tar.gz
 *.whl
+
+# Certs and keys
+*.pem
+*.key
