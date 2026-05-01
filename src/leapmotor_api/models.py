@@ -89,11 +89,6 @@ class TirePressure:
         return all(s == 0 for s in states)
 
 
-# ---------------------------------------------------------------------------
-# Sub-objects for VehicleStatus
-# ---------------------------------------------------------------------------
-
-
 @dataclass(slots=True)
 class BatteryStatus:
     """Battery and charging status."""
