@@ -190,6 +190,22 @@ client.set_charge_limit("WLM...", charge_limit_percent=80)
 client.close()
 ```
 
+## Token Management
+
+The Leapmotor API tokens expire after ~20 minutes. The client handles this **automatically**: all public methods detect expired-token errors and transparently refresh the token (or fall back to a full re-login if the refresh token has also expired).
+
+You can also manage token refresh manually:
+
+```python
+# Explicit refresh (rotates token + refresh token, reuses sign material)
+client.token_refresh()
+
+# Async
+await client.token_refresh()
+```
+
+No configuration is needed — the `refreshToken` is obtained during `login()` and rotated on each refresh call.
+
 ## License
 
 MIT

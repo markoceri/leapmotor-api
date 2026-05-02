@@ -112,6 +112,7 @@ class LeapmotorApiClient:
         self.sign_ikm: str | None = None
         self.sign_salt: str | None = None
         self.sign_info: str | None = None
+        self.refresh_token: str | None = None
         self.account_cert_file: str | None = None
         self.account_key_file: str | None = None
         self.account_p12_password_used: str | None = None
@@ -142,6 +143,7 @@ class LeapmotorApiClient:
         self.sign_ikm = None
         self.sign_salt = None
         self.sign_info = None
+        self.refresh_token = None
         self.account_p12_password_used = None
         self.account_p12_password_source = None
         self.remote_cert_synced = False
@@ -191,8 +193,61 @@ class LeapmotorApiClient:
         self.sign_ikm = str(login_data.get("signIkm"))
         self.sign_salt = str(login_data.get("signSalt"))
         self.sign_info = str(login_data.get("signInfo"))
+        self.refresh_token = str(login_data.get("refreshToken") or "")
         self._load_account_cert(login_data)
         self.remote_cert_synced = False
+
+    def token_refresh(self) -> None:
+        """Refresh the access token using the stored refresh token.
+
+        Reuses the existing sign material and account certificate from login.
+        """
+        if not self.refresh_token:
+            raise LeapmotorAuthError("No refresh token available; a full login is required.")
+
+        body_params = {"refreshToken": self.refresh_token}
+        headers = build_signed_headers(
+            sign_key=self.sign_key,
+            device_id=self.device_id,
+            language=self.language,
+            body_params=body_params,
+        )
+        headers.update(self._auth_headers(content_type="application/x-www-form-urlencoded"))
+        data = f"refreshToken={quote(self.refresh_token, safe='')}"
+        response = self._post(
+            path="/carownerservice/oversea/acct/v1/token/refresh",
+            headers=headers,
+            data=data,
+            cert=self.account_cert,
+        )
+        result = self._parse_api_body(response["status_code"], response["body"], "token refresh")
+        refresh_data = result.get("data") or {}
+        self.token = str(refresh_data.get("token"))
+        self.refresh_token = str(refresh_data.get("refreshToken") or "")
+        _LOGGER.debug("Leapmotor token refreshed successfully")
+
+    def _ensure_token(self) -> None:
+        """Ensure a valid token is available, refreshing or re-logging in as needed."""
+        if not self.token:
+            self._ensure_static_cert_files()
+            self.login()
+
+    def _retry_on_token_expiry(self, func: Any, *args: Any, **kwargs: Any) -> Any:
+        """Call *func* and retry once with token refresh (or full login) on auth failure."""
+        try:
+            return func(*args, **kwargs)
+        except LeapmotorApiError as exc:
+            if "token" not in str(exc).lower():
+                raise
+            _LOGGER.debug("Token appears expired, attempting refresh: %s", exc)
+            try:
+                self.token_refresh()
+            except LeapmotorApiError:
+                _LOGGER.debug("Token refresh failed, falling back to full login")
+                self._clear_auth()
+                self._ensure_static_cert_files()
+                self.login()
+            return func(*args, **kwargs)
 
     def fetch_data(self) -> dict[str, Any]:
         """Authenticate if needed and fetch all read-only vehicle data."""
@@ -210,6 +265,10 @@ class LeapmotorApiClient:
 
     def get_vehicle_list(self) -> list[Vehicle]:
         """Fetch the account vehicle list."""
+        self._ensure_token()
+        return self._retry_on_token_expiry(self._get_vehicle_list)
+
+    def _get_vehicle_list(self) -> list[Vehicle]:
         headers = build_signed_headers(sign_key=self.sign_key, device_id=self.device_id, language=self.language)
         headers.update(self._auth_headers(content_type="application/x-www-form-urlencoded"))
         response = self._post(
@@ -231,11 +290,19 @@ class LeapmotorApiClient:
 
     def get_vehicle_status(self, vehicle: Vehicle) -> VehicleStatus:
         """Fetch status for one vehicle as a typed ``VehicleStatus`` object."""
-        raw = self.get_vehicle_raw_status(vehicle)
+        self._ensure_token()
+        return self._retry_on_token_expiry(self._get_vehicle_status, vehicle)
+
+    def _get_vehicle_status(self, vehicle: Vehicle) -> VehicleStatus:
+        raw = self._get_vehicle_raw_status(vehicle)
         return VehicleStatus.from_dict(raw.get("data") or {})
 
     def get_vehicle_raw_status(self, vehicle: Vehicle) -> dict[str, Any]:
         """Fetch raw status dict for one vehicle (for debug / forward-compatibility)."""
+        self._ensure_token()
+        return self._retry_on_token_expiry(self._get_vehicle_raw_status, vehicle)
+
+    def _get_vehicle_raw_status(self, vehicle: Vehicle) -> dict[str, Any]:
         car_type_path = vehicle.car_type.lower()
         headers = build_signed_headers(
             sign_key=self.sign_key, device_id=self.device_id, vin=vehicle.vin, language=self.language
@@ -251,6 +318,10 @@ class LeapmotorApiClient:
 
     def get_mileage_energy_detail(self, vehicle: Vehicle) -> dict[str, Any]:
         """Fetch read-only mileage and energy history summary."""
+        self._ensure_token()
+        return self._retry_on_token_expiry(self._get_mileage_energy_detail, vehicle)
+
+    def _get_mileage_energy_detail(self, vehicle: Vehicle) -> dict[str, Any]:
         headers = build_signed_headers(
             sign_key=self.sign_key, device_id=self.device_id, vin=vehicle.vin, language=self.language
         )
@@ -265,6 +336,10 @@ class LeapmotorApiClient:
 
     def get_car_picture(self, vehicle: Vehicle) -> dict[str, Any]:
         """Fetch read-only car picture metadata."""
+        self._ensure_token()
+        return self._retry_on_token_expiry(self._get_car_picture, vehicle)
+
+    def _get_car_picture(self, vehicle: Vehicle) -> dict[str, Any]:
         headers = build_car_picture_headers(
             sign_key=self.sign_key, device_id=self.device_id, vin=vehicle.vin, language=self.language
         )
@@ -284,6 +359,10 @@ class LeapmotorApiClient:
 
     def get_message_list(self, *, page_no: int = 1, page_size: int = 10) -> MessageList:
         """Fetch the paginated message list."""
+        self._ensure_token()
+        return self._retry_on_token_expiry(self._get_message_list, page_no=page_no, page_size=page_size)
+
+    def _get_message_list(self, *, page_no: int = 1, page_size: int = 10) -> MessageList:
         body_params = {"pageNo": str(page_no), "pageSize": str(page_size)}
         headers = build_signed_headers(
             sign_key=self.sign_key,
@@ -304,6 +383,10 @@ class LeapmotorApiClient:
 
     def get_unread_message_count(self) -> int:
         """Fetch the unread message count."""
+        self._ensure_token()
+        return self._retry_on_token_expiry(self._get_unread_message_count)
+
+    def _get_unread_message_count(self) -> int:
         headers = build_signed_headers(
             sign_key=self.sign_key,
             device_id=self.device_id,

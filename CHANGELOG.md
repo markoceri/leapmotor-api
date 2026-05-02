@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Automatic token refresh: all public API methods now transparently handle expired tokens by calling `/acct/v1/token/refresh` before falling back to a full re-login
+- Added `token_refresh()` method to both `LeapmotorApiClient` and `AsyncLeapmotorApiClient` for explicit token renewal
+- Stored `refresh_token` from login response for use by the refresh flow
+
 ### Fixed
 - Fixed `Vehicle.from_dict` mapping: `userNickname` → `nickName` and `rights` → `rightList` to match actual API response keys
 
