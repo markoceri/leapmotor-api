@@ -317,7 +317,7 @@ class LeapmotorApiClient:
             cert=self.account_cert,
         )
         body = self._parse_api_body(response["status_code"], response["body"], "unread message count")
-        return (body.get("data") or {}).get("unread", 0)
+        return int((body.get("data") or {}).get("unread", 0))
 
     # ------------------------------------------------------------------
     # Public API — Remote Control
