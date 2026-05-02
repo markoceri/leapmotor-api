@@ -10,6 +10,9 @@ build/
 .venv/
 venv/
 
+# Secrets
+.env
+
 # IDE
 .idea/
 .vscode/
