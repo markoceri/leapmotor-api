@@ -44,7 +44,7 @@ def _build_layer_list(status: VehicleStatus | None) -> list[str]:
 
     doors = status.doors
     windows = status.windows
-    is_charging = status.battery.is_charging
+    is_charging = status.is_charging
 
     # --- Right side (far side, below body) ---
     # Right rear door

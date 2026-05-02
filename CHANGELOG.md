@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 - Fixed `Vehicle.from_dict` mapping: `userNickname` → `nickName` and `rights` → `rightList` to match actual API response keys
+- Correct `is_charging` assignment in image layer composition
 
 ## [0.1.2] - 2026-05-02
 
