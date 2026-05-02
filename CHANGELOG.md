@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-05-02
+
 ### Added
 - Added `Message` and `MessageList` models for notification messages
 - Added `get_message_list(page_no, page_size)` method to retrieve paginated messages
