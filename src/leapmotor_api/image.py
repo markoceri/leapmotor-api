@@ -44,6 +44,7 @@ def _build_layer_list(status: VehicleStatus | None) -> list[str]:
 
     doors = status.doors
     windows = status.windows
+    is_plugged = status.is_plugged
     is_charging = status.is_charging
 
     # --- Right side (far side, below body) ---
@@ -90,7 +91,10 @@ def _build_layer_list(status: VehicleStatus | None) -> list[str]:
         layers.append("carpic_leftbehind_window_close.png")
 
     # --- Charging ---
-    if is_charging:
+    if is_plugged:
+        layers.append("carpic_charge_open.png")
+        layers.append("carpic_charge1.png")  # plugged but not yet charging
+    elif is_charging:
         layers.append("carpic_charge_open.png")
         layers.append("carpic_charge2.png")  # static frame for still image
 

@@ -367,6 +367,15 @@ class VehicleStatus:
         return self.doors.is_locked
 
     @property
+    def is_plugged(self) -> bool:
+        """True if a charger is connected but charging has not started yet."""
+        return (
+            self.battery.charge_state in (ChargeState.AC_CONNECTED, ChargeState.DC_CONNECTED)
+            and self.driving.is_parked
+            and not self.battery.is_charging
+        )
+
+    @property
     def is_charging(self) -> bool | None:
         """True if the vehicle is currently charger plugin connected, is parked and the charging is started."""
         return (

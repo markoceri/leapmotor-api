@@ -11,11 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Automatic token refresh: all public API methods now transparently handle expired tokens by calling `/acct/v1/token/refresh` before falling back to a full re-login
 - Added `token_refresh()` method to both `LeapmotorApiClient` and `AsyncLeapmotorApiClient` for explicit token renewal
 - Stored `refresh_token` from login response for use by the refresh flow
+- Added `VehicleStatus.is_plugged` property: returns `True` when a charger is connected but charging has not started yet
+- Charging image layers: `is_plugged` state shows `carpic_charge_open` + `carpic_charge1` (static plug indicator); active charging starts from frame 2
 
 ### Changed
 - Refactored `RemoteActionSpec` into typed subclasses (`RemoteActionCtlLock`, `RemoteActionCtlTrunk`, `RemoteActionCtlFindCar`, `RemoteActionCtlSunshade`, `RemoteActionCtlBatteryPreheat`, `RemoteActionCtlWindows`, `RemoteActionCtlClimate`) with explicit parameters per command
 - Added `StrEnum` value types for type-safe command parameters: `LockValue`, `ToggleValue`, `SunshadeValue`, `WindowsValue`, `BatteryPreheatValue`, `ClimateCircle`, `ClimateMode`, `ClimateOperate`, `ClimatePosition`, `ClimateWindshield`
 - `RemoteActionCtlSunshade` and `RemoteActionCtlWindows` now validate value ranges (0-10 and 0-100 respectively) at construction time
+- Charging animation now excludes frame 1 and uses frames 2–15
 
 ### Fixed
 - Fixed `Vehicle.from_dict` mapping: `userNickname` → `nickName` and `rights` → `rightList` to match actual API response keys
