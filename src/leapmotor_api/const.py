@@ -2,7 +2,26 @@
 
 from __future__ import annotations
 
-from .models import RemoteActionSpec
+from .models import (
+    BatteryPreheatValue,
+    ClimateCircle,
+    ClimateMode,
+    ClimateOperate,
+    ClimatePosition,
+    ClimateWindshield,
+    LockValue,
+    RemoteActionCtlBatteryPreheat,
+    RemoteActionCtlClimate,
+    RemoteActionCtlFindCar,
+    RemoteActionCtlLock,
+    RemoteActionCtlSunshade,
+    RemoteActionCtlTrunk,
+    RemoteActionCtlWindows,
+    RemoteActionSpec,
+    SunshadeValue,
+    ToggleValue,
+    WindowsValue,
+)
 
 DEFAULT_BASE_URL = "https://appgateway.leapmotor-international.de"
 DEFAULT_APP_VERSION = "1.12.3"
@@ -38,33 +57,53 @@ REMOTE_CTL_QUICK_HEAT = "quick_heat"
 REMOTE_CTL_WINDSHIELD_DEFROST = "windshield_defrost"
 
 REMOTE_ACTION_SPECS: dict[str, RemoteActionSpec] = {
-    REMOTE_CTL_UNLOCK: RemoteActionSpec(cmd_id="110", cmd_content='{"value":"unlock"}'),
-    REMOTE_CTL_LOCK: RemoteActionSpec(cmd_id="110", cmd_content='{"value":"lock"}'),
-    REMOTE_CTL_TRUNK: RemoteActionSpec(cmd_id="130", cmd_content='{"value":"true"}'),
-    REMOTE_CTL_TRUNK_OPEN: RemoteActionSpec(cmd_id="130", cmd_content='{"value":"true"}'),
-    REMOTE_CTL_TRUNK_CLOSE: RemoteActionSpec(cmd_id="130", cmd_content='{"value":"false"}'),
-    REMOTE_CTL_FIND_CAR: RemoteActionSpec(cmd_id="120", cmd_content='{"value":"true"}'),
-    REMOTE_CTL_SUNSHADE: RemoteActionSpec(cmd_id="240", cmd_content='{"value":"10"}'),
-    REMOTE_CTL_SUNSHADE_OPEN: RemoteActionSpec(cmd_id="240", cmd_content='{"value":"10"}'),
-    REMOTE_CTL_SUNSHADE_CLOSE: RemoteActionSpec(cmd_id="240", cmd_content='{"value":"0"}'),
-    REMOTE_CTL_BATTERY_PREHEAT: RemoteActionSpec(cmd_id="160", cmd_content='{"value":"ptcon"}'),
-    REMOTE_CTL_WINDOWS: RemoteActionSpec(cmd_id="230", cmd_content='{"value":"2"}'),
-    REMOTE_CTL_WINDOWS_OPEN: RemoteActionSpec(cmd_id="230", cmd_content='{"value":"2"}'),
-    REMOTE_CTL_WINDOWS_CLOSE: RemoteActionSpec(cmd_id="230", cmd_content='{"value":"0"}'),
-    REMOTE_CTL_AC_SWITCH: RemoteActionSpec(
-        cmd_id="170",
-        cmd_content='{"circle":"out","mode":"nohotcold","operate":"manual","position":"all","temperature":"24","windlevel":"4","wshld":"1"}',
+    REMOTE_CTL_UNLOCK: RemoteActionCtlLock(value=LockValue.UNLOCK),
+    REMOTE_CTL_LOCK: RemoteActionCtlLock(value=LockValue.LOCK),
+    REMOTE_CTL_TRUNK: RemoteActionCtlTrunk(value=ToggleValue.TRUE),
+    REMOTE_CTL_TRUNK_OPEN: RemoteActionCtlTrunk(value=ToggleValue.TRUE),
+    REMOTE_CTL_TRUNK_CLOSE: RemoteActionCtlTrunk(value=ToggleValue.FALSE),
+    REMOTE_CTL_FIND_CAR: RemoteActionCtlFindCar(value=ToggleValue.TRUE),
+    REMOTE_CTL_SUNSHADE: RemoteActionCtlSunshade(value=SunshadeValue.OPEN),
+    REMOTE_CTL_SUNSHADE_OPEN: RemoteActionCtlSunshade(value=SunshadeValue.OPEN),
+    REMOTE_CTL_SUNSHADE_CLOSE: RemoteActionCtlSunshade(value=SunshadeValue.CLOSE),
+    REMOTE_CTL_BATTERY_PREHEAT: RemoteActionCtlBatteryPreheat(value=BatteryPreheatValue.ON),
+    REMOTE_CTL_WINDOWS: RemoteActionCtlWindows(value=WindowsValue.OPEN),
+    REMOTE_CTL_WINDOWS_OPEN: RemoteActionCtlWindows(value=WindowsValue.OPEN),
+    REMOTE_CTL_WINDOWS_CLOSE: RemoteActionCtlWindows(value=WindowsValue.CLOSE),
+    REMOTE_CTL_AC_SWITCH: RemoteActionCtlClimate(
+        circle=ClimateCircle.OUT,
+        mode=ClimateMode.NO_HOT_COLD,
+        operate=ClimateOperate.MANUAL,
+        position=ClimatePosition.ALL,
+        temperature="24",
+        windlevel="4",
+        wshld=ClimateWindshield.NORMAL,
     ),
-    REMOTE_CTL_QUICK_COOL: RemoteActionSpec(
-        cmd_id="170",
-        cmd_content='{"circle":"in","mode":"cold","operate":"manual","position":"all","temperature":"18","windlevel":"7","wshld":"1"}',
+    REMOTE_CTL_QUICK_COOL: RemoteActionCtlClimate(
+        circle=ClimateCircle.IN,
+        mode=ClimateMode.COLD,
+        operate=ClimateOperate.MANUAL,
+        position=ClimatePosition.ALL,
+        temperature="18",
+        windlevel="7",
+        wshld=ClimateWindshield.NORMAL,
     ),
-    REMOTE_CTL_QUICK_HEAT: RemoteActionSpec(
-        cmd_id="170",
-        cmd_content='{"circle":"in","mode":"hot","operate":"manual","position":"all","temperature":"32","windlevel":"7","wshld":"1"}',
+    REMOTE_CTL_QUICK_HEAT: RemoteActionCtlClimate(
+        circle=ClimateCircle.IN,
+        mode=ClimateMode.HOT,
+        operate=ClimateOperate.MANUAL,
+        position=ClimatePosition.ALL,
+        temperature="32",
+        windlevel="7",
+        wshld=ClimateWindshield.NORMAL,
     ),
-    REMOTE_CTL_WINDSHIELD_DEFROST: RemoteActionSpec(
-        cmd_id="170",
-        cmd_content='{"circle":"in","mode":"hot","operate":"manual","position":"all","temperature":"32","windlevel":"7","wshld":"2"}',
+    REMOTE_CTL_WINDSHIELD_DEFROST: RemoteActionCtlClimate(
+        circle=ClimateCircle.IN,
+        mode=ClimateMode.HOT,
+        operate=ClimateOperate.MANUAL,
+        position=ClimatePosition.ALL,
+        temperature="32",
+        windlevel="7",
+        wshld=ClimateWindshield.DEFROST,
     ),
 }

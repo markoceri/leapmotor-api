@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import contextlib
+import json
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import IntEnum
+from enum import IntEnum, StrEnum
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -483,12 +484,201 @@ def _extract_fields(data: dict[str, Any], mapping: dict[str, str]) -> dict[str, 
     return {field_name: data[api_key] for api_key, field_name in mapping.items() if api_key in data}
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class RemoteActionSpec:
-    """Verified remote-control action payload."""
+    """Base remote-control action payload."""
 
     cmd_id: str
     cmd_content: str
+
+
+# ---------------------------------------------------------------------------
+# Enums for remote-control command parameter values
+# ---------------------------------------------------------------------------
+
+
+class LockValue(StrEnum):
+    """Values for lock/unlock command."""
+
+    LOCK = "lock"
+    UNLOCK = "unlock"
+
+
+class ToggleValue(StrEnum):
+    """Generic true/false toggle used by multiple commands."""
+
+    TRUE = "true"
+    FALSE = "false"
+
+
+class BatteryPreheatValue(StrEnum):
+    """Values for battery preheat command."""
+
+    ON = "ptcon"
+    OFF = "ptcoff"
+
+
+class SunshadeValue(StrEnum):
+    """Convenience values for sunshade position (range: 0-10)."""
+
+    OPEN = "10"
+    CLOSE = "0"
+
+
+class WindowsValue(StrEnum):
+    """Convenience values for windows position (range: 0-100)."""
+
+    OPEN = "100"
+    CLOSE = "0"
+
+
+class ClimateCircle(StrEnum):
+    """Air circulation mode."""
+
+    IN = "in"
+    OUT = "out"
+
+
+class ClimateMode(StrEnum):
+    """Climate mode."""
+
+    COLD = "cold"
+    HOT = "hot"
+    NO_HOT_COLD = "nohotcold"
+
+
+class ClimateOperate(StrEnum):
+    """Climate operate mode."""
+
+    MANUAL = "manual"
+    AUTO = "auto"
+
+
+class ClimatePosition(StrEnum):
+    """Climate air position."""
+
+    ALL = "all"
+
+
+class ClimateWindshield(StrEnum):
+    """Windshield defrost setting."""
+
+    NORMAL = "1"
+    DEFROST = "2"
+
+
+# ---------------------------------------------------------------------------
+# Typed remote-control action subclasses
+# ---------------------------------------------------------------------------
+
+
+@dataclass(slots=True)
+class RemoteActionCtlLock(RemoteActionSpec):
+    """Lock/unlock command (cmd_id=110)."""
+
+    value: str = LockValue.LOCK
+    cmd_id: str = field(default="110", init=False)
+    cmd_content: str = field(default="", init=False)
+
+    def __post_init__(self) -> None:
+        self.cmd_content = json.dumps({"value": self.value}, separators=(",", ":"))
+
+
+@dataclass(slots=True)
+class RemoteActionCtlTrunk(RemoteActionSpec):
+    """Trunk open/close command (cmd_id=130)."""
+
+    value: str = ToggleValue.TRUE
+    cmd_id: str = field(default="130", init=False)
+    cmd_content: str = field(default="", init=False)
+
+    def __post_init__(self) -> None:
+        self.cmd_content = json.dumps({"value": self.value}, separators=(",", ":"))
+
+
+@dataclass(slots=True)
+class RemoteActionCtlFindCar(RemoteActionSpec):
+    """Find car command (cmd_id=120)."""
+
+    value: str = ToggleValue.TRUE
+    cmd_id: str = field(default="120", init=False)
+    cmd_content: str = field(default="", init=False)
+
+    def __post_init__(self) -> None:
+        self.cmd_content = json.dumps({"value": self.value}, separators=(",", ":"))
+
+
+@dataclass(slots=True)
+class RemoteActionCtlSunshade(RemoteActionSpec):
+    """Sunshade control command (cmd_id=240). Value: 0 (closed) to 10 (fully open)."""
+
+    value: str = SunshadeValue.OPEN
+    cmd_id: str = field(default="240", init=False)
+    cmd_content: str = field(default="", init=False)
+
+    _VALUE_RANGE: range = field(default=range(0, 11), init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if int(self.value) not in self._VALUE_RANGE:
+            raise ValueError(f"Sunshade value must be 0-10, got {self.value!r}")
+        self.cmd_content = json.dumps({"value": self.value}, separators=(",", ":"))
+
+
+@dataclass(slots=True)
+class RemoteActionCtlBatteryPreheat(RemoteActionSpec):
+    """Battery preheat command (cmd_id=160)."""
+
+    value: str = BatteryPreheatValue.ON
+    cmd_id: str = field(default="160", init=False)
+    cmd_content: str = field(default="", init=False)
+
+    def __post_init__(self) -> None:
+        self.cmd_content = json.dumps({"value": self.value}, separators=(",", ":"))
+
+
+@dataclass(slots=True)
+class RemoteActionCtlWindows(RemoteActionSpec):
+    """Windows open/close command (cmd_id=230). Value: 0 (closed) to 100 (fully open)."""
+
+    value: str = WindowsValue.OPEN
+    cmd_id: str = field(default="230", init=False)
+    cmd_content: str = field(default="", init=False)
+
+    _VALUE_RANGE: range = field(default=range(0, 101), init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        if int(self.value) not in self._VALUE_RANGE:
+            raise ValueError(f"Windows value must be 0-100, got {self.value!r}")
+        self.cmd_content = json.dumps({"value": self.value}, separators=(",", ":"))
+
+
+@dataclass(slots=True)
+class RemoteActionCtlClimate(RemoteActionSpec):
+    """Climate / AC command (cmd_id=170)."""
+
+    circle: str = ClimateCircle.OUT
+    mode: str = ClimateMode.NO_HOT_COLD
+    operate: str = ClimateOperate.MANUAL
+    position: str = ClimatePosition.ALL
+    temperature: str = "24"
+    windlevel: str = "4"
+    wshld: str = ClimateWindshield.NORMAL
+    cmd_id: str = field(default="170", init=False)
+    cmd_content: str = field(default="", init=False)
+
+    def __post_init__(self) -> None:
+        self.cmd_content = json.dumps(
+            {
+                "circle": self.circle,
+                "mode": self.mode,
+                "operate": self.operate,
+                "position": self.position,
+                "temperature": self.temperature,
+                "windlevel": self.windlevel,
+                "wshld": self.wshld,
+            },
+            separators=(",", ":"),
+        )
 
 
 @dataclass(slots=True)

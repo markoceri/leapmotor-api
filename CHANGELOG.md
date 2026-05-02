@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Added `token_refresh()` method to both `LeapmotorApiClient` and `AsyncLeapmotorApiClient` for explicit token renewal
 - Stored `refresh_token` from login response for use by the refresh flow
 
+### Changed
+- Refactored `RemoteActionSpec` into typed subclasses (`RemoteActionCtlLock`, `RemoteActionCtlTrunk`, `RemoteActionCtlFindCar`, `RemoteActionCtlSunshade`, `RemoteActionCtlBatteryPreheat`, `RemoteActionCtlWindows`, `RemoteActionCtlClimate`) with explicit parameters per command
+- Added `StrEnum` value types for type-safe command parameters: `LockValue`, `ToggleValue`, `SunshadeValue`, `WindowsValue`, `BatteryPreheatValue`, `ClimateCircle`, `ClimateMode`, `ClimateOperate`, `ClimatePosition`, `ClimateWindshield`
+- `RemoteActionCtlSunshade` and `RemoteActionCtlWindows` now validate value ranges (0-10 and 0-100 respectively) at construction time
+
 ### Fixed
 - Fixed `Vehicle.from_dict` mapping: `userNickname` → `nickName` and `rights` → `rightList` to match actual API response keys
 

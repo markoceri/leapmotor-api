@@ -580,12 +580,10 @@ class TestVehicleStatusFromDict:
 
 
 class TestRemoteActionSpec:
-    def test_frozen(self) -> None:
+    def test_fields(self) -> None:
         spec = RemoteActionSpec(cmd_id="110", cmd_content='{"value":"lock"}')
         assert spec.cmd_id == "110"
         assert spec.cmd_content == '{"value":"lock"}'
-        with pytest.raises(AttributeError):
-            spec.cmd_id = "999"  # type: ignore[misc]
 
 
 class TestRemoteActionResult:
