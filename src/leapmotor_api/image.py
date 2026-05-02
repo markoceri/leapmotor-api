@@ -92,7 +92,7 @@ def _build_layer_list(status: VehicleStatus | None) -> list[str]:
     # --- Charging ---
     if is_charging:
         layers.append("carpic_charge_open.png")
-        layers.append("carpic_charge1.png")  # static frame for still image
+        layers.append("carpic_charge2.png")  # static frame for still image
 
     return layers
 
@@ -169,14 +169,14 @@ class CarImagePackage:
         self,
         status: VehicleStatus | None = None,
         *,
-        charge_frame: int = 1,
+        charge_frame: int = 2,
         format: str = "PNG",  # noqa: A002
     ) -> bytes:
         """Composite the car image layers based on vehicle status.
 
         Args:
             status: Current vehicle status. If None, all doors/windows closed.
-            charge_frame: Charging animation frame (1-15). Only used when charging.
+            charge_frame: Charging animation frame (2-15). Only used when charging.
             format: Output image format (PNG, JPEG, WEBP).
 
         Returns:
@@ -185,9 +185,9 @@ class CarImagePackage:
         layer_names = _build_layer_list(status)
 
         # If charging and a specific frame is requested, swap the default frame
-        if status and status.battery.is_charging and 1 <= charge_frame <= 15:
+        if status and status.battery.is_charging and 2 <= charge_frame <= 15:
             for i, name in enumerate(layer_names):
-                if name == "carpic_charge1.png":
+                if name == "carpic_charge2.png":
                     layer_names[i] = f"carpic_charge{charge_frame}.png"
                     break
 
@@ -219,9 +219,9 @@ class CarImagePackage:
         base_layers = [n for n in layer_names if not n.startswith("carpic_charge") or n == "carpic_charge_open.png"]
         base_canvas = self._composite_layers(base_layers)
 
-        # Generate 15 frames, each overlaying a different charge level
+        # Generate 14 frames, each overlaying a different charge level
         frames: list[Image.Image] = []
-        for i in range(1, 16):
+        for i in range(2, 16):
             charge_layer = self._images.get(f"carpic_charge{i}.png")
             frame = Image.alpha_composite(base_canvas, charge_layer) if charge_layer else base_canvas.copy()
             frames.append(frame)
