@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Fixed `BatteryStatus.is_charging` returning `True` when vehicle is off/not charging because `charge_remain_time` was `0` instead of `None`; now requires a truthy (non-zero) value
+
 ## [0.1.3] - 2026-05-03
 
 ### Added
