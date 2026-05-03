@@ -15,6 +15,18 @@ Special thanks to [Jakob Kern](https://github.com/kerniger) for the impressive r
 pip install leapmotor-api
 ```
 
+## Certificates
+
+The library requires the Leapmotor app certificate and private key to authenticate API requests.
+You can download them from the dedicated repository:
+
+```bash
+wget https://github.com/markoceri/leapmotor-certs/archive/refs/tags/v1.0.0.zip
+unzip v1.0.0.zip
+```
+
+The extracted folder contains `app_cert.pem` and `app_key.pem`. Pass their paths to the client via the `app_cert_path` and `app_key_path` parameters.
+
 ## Quick Start
 
 ```python
