@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-05-03
+
 ### Added
 - Automatic token refresh: all public API methods now transparently handle expired tokens by calling `/acct/v1/token/refresh` before falling back to a full re-login
 - Added `token_refresh()` method to both `LeapmotorApiClient` and `AsyncLeapmotorApiClient` for explicit token renewal
