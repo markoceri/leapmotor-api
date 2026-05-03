@@ -183,7 +183,7 @@ class BatteryStatus:
         The vehicle's overall charging status (e.g. whether it's plugged in and charging) can be determined
         from the ``VehicleStatus.is_charging`` property, which also considers the driving status.
         """
-        return bool(self.charging_power_kw is not None and self.charge_remain_time is not None)
+        return bool(self.charging_power_kw is not None and self.charge_remain_time)
 
     @property
     def is_discharging(self) -> bool | None:

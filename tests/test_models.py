@@ -256,6 +256,11 @@ class TestBatteryStatus:
         bs = BatteryStatus(battery_voltage=400.0, battery_current=-10.0, charge_remain_time=60)
         assert bs.is_charging is True
 
+    def test_is_charging_false_remain_time_zero(self) -> None:
+        """charge_remain_time=0 means not actually charging (vehicle off)."""
+        bs = BatteryStatus(battery_voltage=400.0, battery_current=-10.0, charge_remain_time=0)
+        assert bs.is_charging is False
+
     def test_is_charging_false_no_remain_time(self) -> None:
         bs = BatteryStatus(battery_voltage=400.0, battery_current=-10.0)
         assert bs.is_charging is False
