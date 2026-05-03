@@ -11,7 +11,7 @@ import tempfile
 import time
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypeVar
 from urllib.parse import quote
 
 import requests
@@ -61,6 +61,11 @@ from .exceptions import (
     LeapmotorMissingAppCertError,
 )
 from .models import MessageList, Vehicle, VehicleStatus
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+_T = TypeVar("_T")
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -232,7 +237,7 @@ class LeapmotorApiClient:
             self._ensure_static_cert_files()
             self.login()
 
-    def _retry_on_token_expiry(self, func: Any, *args: Any, **kwargs: Any) -> Any:
+    def _retry_on_token_expiry(self, func: Callable[..., _T], *args: Any, **kwargs: Any) -> _T:
         """Call *func* and retry once with token refresh (or full login) on auth failure."""
         try:
             return func(*args, **kwargs)
