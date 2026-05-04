@@ -10,9 +10,11 @@ import os
 import tempfile
 import time
 import uuid
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 import requests
 import urllib3
@@ -42,6 +44,8 @@ from .const import (
 from .crypto import (
     build_car_picture_headers,
     build_car_picture_package_headers,
+    build_consumption_last_week_headers,
+    build_consumption_weekly_rank_headers,
     build_login_headers,
     build_operpwd_verify_headers,
     build_remote_ctl_result_headers,
@@ -339,6 +343,49 @@ class LeapmotorApiClient:
         )
         return self._parse_api_body(response["status_code"], response["body"], "mileage energy detail")
 
+    def get_consumption_weekly_rank(self, vehicle: Vehicle) -> dict[str, Any]:
+        """Fetch six-week energy consumption and ranking data."""
+        self._ensure_token()
+        return self._retry_on_token_expiry(self._get_consumption_weekly_rank, vehicle)
+
+    def _get_consumption_weekly_rank(self, vehicle: Vehicle) -> dict[str, Any]:
+        headers = build_consumption_weekly_rank_headers(
+            sign_key=self.sign_key, device_id=self.device_id, carvin=vehicle.vin, language=self.language
+        )
+        headers.update(self._auth_headers(content_type="application/x-www-form-urlencoded"))
+        response = self._post(
+            path="/carownerservice/oversea/drivingRecord/v1/getLastNweeks100kmECAndRank",
+            headers=headers,
+            data=f"carvin={quote(vehicle.vin, safe='')}",
+            cert=self.account_cert,
+        )
+        return self._parse_api_body(response["status_code"], response["body"], "consumption weekly rank")
+
+    def get_consumption_last_week_breakdown(self, vehicle: Vehicle) -> dict[str, Any]:
+        """Fetch last-week energy split by driving, A/C, and other."""
+        self._ensure_token()
+        return self._retry_on_token_expiry(self._get_consumption_last_week_breakdown, vehicle)
+
+    def _get_consumption_last_week_breakdown(self, vehicle: Vehicle) -> dict[str, Any]:
+        begintime, endtime = _previous_week_window_seconds()
+        headers = build_consumption_last_week_headers(
+            sign_key=self.sign_key,
+            device_id=self.device_id,
+            carvin=vehicle.vin,
+            begintime=str(begintime),
+            endtime=str(endtime),
+            language=self.language,
+        )
+        headers.update(self._auth_headers(content_type="application/x-www-form-urlencoded"))
+        body = f"endtime={endtime}&begintime={begintime}&carvin={quote(vehicle.vin, safe='')}"
+        response = self._post(
+            path="/carownerservice/oversea/drivingRecord/v1/getLastweekEC",
+            headers=headers,
+            data=body,
+            cert=self.account_cert,
+        )
+        return self._parse_api_body(response["status_code"], response["body"], "consumption last week breakdown")
+
     def get_car_picture(self, vehicle: Vehicle) -> dict[str, Any]:
         """Fetch read-only car picture metadata."""
         self._ensure_token()
@@ -563,12 +610,18 @@ class LeapmotorApiClient:
         for vehicle in vehicles:
             status = self.get_vehicle_raw_status(vehicle)
             mileage = self._fetch_optional_read("mileage energy detail", self.get_mileage_energy_detail, vehicle)
+            rank = self._fetch_optional_read("consumption weekly rank", self.get_consumption_weekly_rank, vehicle)
+            breakdown = self._fetch_optional_read(
+                "consumption last week breakdown", self.get_consumption_last_week_breakdown, vehicle
+            )
             picture = self._fetch_optional_read("car picture", self.get_car_picture, vehicle)
             result["vehicles"][vehicle.vin] = normalize_vehicle(
                 vehicle,
                 status,
                 self.user_id,
                 mileage_json=mileage,
+                consumption_rank_json=rank,
+                consumption_breakdown_json=breakdown,
                 picture_json=picture,
             )
         return result
@@ -975,6 +1028,8 @@ def normalize_vehicle(
     user_id: str | None,
     *,
     mileage_json: dict[str, Any] | None = None,
+    consumption_rank_json: dict[str, Any] | None = None,
+    consumption_breakdown_json: dict[str, Any] | None = None,
     picture_json: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Normalize Leapmotor status payload into a structured dict."""
@@ -983,6 +1038,10 @@ def normalize_vehicle(
     config = status_data.get("config") or {}
     charge_plan = config.get("3") or {}
     mileage_data = (mileage_json or {}).get("data") or {}
+    rank_data = (consumption_rank_json or {}).get("data") or {}
+    rank_result = rank_data.get("rankResult") or {}
+    weekly_ec = rank_data.get("weeklyEC") or []
+    breakdown_data = (consumption_breakdown_json or {}).get("data") or {}
     picture_data = (picture_json or {}).get("data") or {}
     vehicle_state = _derive_vehicle_state(signal)
 
@@ -1004,8 +1063,9 @@ def normalize_vehicle(
             "battery_percent": signal.get("1204"),
             "remaining_range_km": signal.get("3260"),
             "odometer_km": signal.get("1318"),
-            "is_locked": _safe_int(signal.get("47")) == 0 if signal.get("47") is not None else None,
-            "raw_lock_status_code": signal.get("47"),
+            "is_locked": _safe_int(signal.get("1298")) == 1 if signal.get("1298") is not None else None,
+            "raw_lock_status_code": signal.get("1298"),
+            "lock_state_source": "raw_signal_1298",
             "is_parked": vehicle_state == "parked" if vehicle_state is not None else None,
             "vehicle_state": vehicle_state,
             "vehicle_state_source": "raw_signal",
@@ -1043,6 +1103,18 @@ def normalize_vehicle(
             "total_mileage_km": mileage_data.get("totalmileage"),
             "total_mileage_mi": _safe_float(mileage_data.get("totalmileageMile")),
             "delivery_days": mileage_data.get("deliveryDays"),
+            "total_energy_kwh": _safe_float(mileage_data.get("totalEnergy")),
+            "last_7_days_mileage_km": mileage_data.get("totalAccumulatedMileage"),
+            "last_7_days_mileage_mi": _safe_float(mileage_data.get("totalAccumulatedMileageMile")),
+            "last_7_days_energy_kwh": _sum_detail_field(mileage_data.get("detail"), "accumulatedEnergyConsume"),
+            "average_consumption_6w_kwh_100km": _safe_float(rank_result.get("hundredKmEC")),
+            "average_consumption_6w_mi_kwh": _safe_float(rank_result.get("hundredMiKwhEC")),
+            "consumption_rank": rank_result.get("rank"),
+            "weekly_consumption": weekly_ec,
+            "last_week_driving_energy_kwh": _safe_float(breakdown_data.get("driverEC")),
+            "last_week_climate_energy_kwh": _safe_float(breakdown_data.get("acEC")),
+            "last_week_other_energy_kwh": _safe_float(breakdown_data.get("otherEC")),
+            **_energy_breakdown_percentages(breakdown_data),
         },
         "media": {
             "car_picture_status": "available" if picture_data.get("key") else "unavailable",
@@ -1072,6 +1144,52 @@ def normalize_vehicle(
         },
         "raw_updated_at": time.time(),
     }
+
+
+def _previous_week_window_seconds() -> tuple[int, int]:
+    """Return the previous Monday–Sunday window used by getLastweekEC."""
+    now = _berlin_now()
+    this_monday = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    start = this_monday - timedelta(days=7)
+    end = this_monday - timedelta(seconds=1)
+    return int(start.timestamp()), int(end.timestamp())
+
+
+def _berlin_now() -> datetime:
+    try:
+        return datetime.now(ZoneInfo("Europe/Berlin"))
+    except Exception:  # noqa: BLE001
+        return datetime.now().astimezone()
+
+
+def _sum_detail_field(detail: Any, field: str) -> float | None:
+    """Sum one numeric field from an API detail list."""
+    if not isinstance(detail, list):
+        return None
+    total = 0.0
+    found = False
+    for item in detail:
+        if not isinstance(item, dict):
+            continue
+        value = _safe_float(item.get(field))
+        if value is None:
+            continue
+        total += value
+        found = True
+    return total if found else None
+
+
+def _energy_breakdown_percentages(data: dict[str, Any]) -> dict[str, float | None]:
+    """Convert last-week kWh split into percentage fields."""
+    values = {
+        "last_week_driving_energy_percent": _safe_float(data.get("driverEC")),
+        "last_week_climate_energy_percent": _safe_float(data.get("acEC")),
+        "last_week_other_energy_percent": _safe_float(data.get("otherEC")),
+    }
+    total = sum(v for v in values.values() if v is not None)
+    if total <= 0:
+        return {k: None for k in values}
+    return {k: round(v * 100 / total, 1) if v is not None else None for k, v in values.items()}
 
 
 def _safe_int(raw: Any) -> int | None:
