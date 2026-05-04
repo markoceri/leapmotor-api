@@ -53,6 +53,12 @@ class AsyncLeapmotorApiClient:
     async def get_mileage_energy_detail(self, vehicle: Vehicle) -> dict[str, Any]:
         return await asyncio.to_thread(self._client.get_mileage_energy_detail, vehicle)
 
+    async def get_consumption_weekly_rank(self, vehicle: Vehicle) -> dict[str, Any]:
+        return await asyncio.to_thread(self._client.get_consumption_weekly_rank, vehicle)
+
+    async def get_consumption_last_week_breakdown(self, vehicle: Vehicle) -> dict[str, Any]:
+        return await asyncio.to_thread(self._client.get_consumption_last_week_breakdown, vehicle)
+
     async def get_car_picture(self, vehicle: Vehicle) -> dict[str, Any]:
         return await asyncio.to_thread(self._client.get_car_picture, vehicle)
 
