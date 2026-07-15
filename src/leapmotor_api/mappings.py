@@ -303,10 +303,11 @@ REMOTE_ACTION_SPECS: dict[str, RemoteActionSpec] = {
 # Car-type path mapping
 # ---------------------------------------------------------------------------
 
-# The international backend reports carType=B10 in the vehicle list,
-# but the status endpoint is shared with C10.  B11 also uses the C10 path.
+# The international backend reports these B-series car types in the vehicle
+# list, but their status endpoint is shared with C10.
 # Use ``CarType(car_type_str).status_path`` for runtime resolution.
 CAR_TYPE_PATH_MAP: dict[str, str] = {
+    CarType.B05: CarType.C10,
     CarType.B10: CarType.C10,
     CarType.B11: CarType.C10,
 }

@@ -100,6 +100,10 @@ class TestClientClose:
 
 
 class TestVehicleStatusCarTypePath:
+    def test_b05_maps_to_c10(self) -> None:
+        assert _vehicle_status_car_type_path("B05") == "c10"
+        assert _vehicle_status_car_type_path("b05") == "c10"
+
     def test_b10_maps_to_c10(self) -> None:
         assert _vehicle_status_car_type_path("B10") == "c10"
         assert _vehicle_status_car_type_path("b10") == "c10"
