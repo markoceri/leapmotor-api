@@ -21,6 +21,7 @@ from leapmotor_api.models import (
     ApiRequestHeaders,
     BatteryStatus,
     BoolStatus,
+    CarType,
     ChargeState,
     ClimateCircle,
     ClimateMode,
@@ -79,6 +80,12 @@ from leapmotor_api.models import (
     VehicleStatus,
     WeeklyConsumption,
 )
+
+
+def test_b05_status_path_maps_to_c10() -> None:
+    assert CarType.B05.status_path == "c10"
+    assert CarType("B05").status_path == "c10"
+
 
 # ---------------------------------------------------------------------------
 # ApiRequestHeaders
