@@ -21,6 +21,7 @@ from leapmotor_api.models import (
     ApiRequestHeaders,
     BatteryStatus,
     BoolStatus,
+    ChargePlan,
     ChargeState,
     ClimateCircle,
     ClimateMode,
@@ -1668,6 +1669,62 @@ class TestVehicleStatusFromDict:
     def test_charge_plan_cancelled_once_default(self) -> None:
         vs = VehicleStatus.from_dict({})
         assert vs.battery.charge_plan.cancelled_once is None
+
+    # -- ChargePlan.recharge (chargeScheduleRecharge) --
+
+    def test_charge_plan_recharge_named(self) -> None:
+        vs = VehicleStatus.from_dict({"chargeScheduleRecharge": 1})
+        assert vs.battery.charge_plan.recharge == 1
+
+    def test_charge_plan_recharge_default(self) -> None:
+        vs = VehicleStatus.from_dict({})
+        assert vs.battery.charge_plan.recharge is None
+
+    def test_charge_plan_recharge_toggle_only_changes_recharge(self) -> None:
+        """Real-world capture: toggling the app's "resume charging if schedule
+        is missed" setting only changes `recharge` in the schedule dict.
+        """
+        before = {
+            "chargeEnable": 1,
+            "chargesoc": 90,
+            "circulation": 1,
+            "cycles": "1,1,1,1,1,1,1",
+            "endtime": "07:55",
+            "recharge": 0,
+            "starttime": "00:00",
+        }
+        after = {**before, "recharge": 1}
+
+        plan_before = ChargePlan.from_dict(
+            {
+                "chargeScheduleEnabled": before["chargeEnable"],
+                "chargesocSetting": before["chargesoc"],
+                "chargeScheduleCirculation": before["circulation"],
+                "chargeScheduleCycles": before["cycles"],
+                "chargeScheduleEnd": before["endtime"],
+                "chargeScheduleRecharge": before["recharge"],
+                "chargeScheduleStart": before["starttime"],
+            }
+        )
+        plan_after = ChargePlan.from_dict(
+            {
+                "chargeScheduleEnabled": after["chargeEnable"],
+                "chargesocSetting": after["chargesoc"],
+                "chargeScheduleCirculation": after["circulation"],
+                "chargeScheduleCycles": after["cycles"],
+                "chargeScheduleEnd": after["endtime"],
+                "chargeScheduleRecharge": after["recharge"],
+                "chargeScheduleStart": after["starttime"],
+            }
+        )
+        assert plan_before.recharge == 0
+        assert plan_after.recharge == 1
+        assert plan_before.enabled == plan_after.enabled
+        assert plan_before.soc_setting == plan_after.soc_setting
+        assert plan_before.circulation == plan_after.circulation
+        assert plan_before.cycles == plan_after.cycles
+        assert plan_before.start == plan_after.start
+        assert plan_before.end == plan_after.end
 
     # -- GearStatus._missing_() --
 

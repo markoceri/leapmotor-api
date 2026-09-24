@@ -783,6 +783,9 @@ class LeapmotorApiClient:
         Unlike other schedule types, the charge schedule is a flat object
         (not wrapped in a ``controls`` array). Returns the parsed dict
         or an empty dict if no schedule is set.
+
+        The ``recharge`` field reflects the official app's "resume charging
+        if schedule is missed" toggle — see ``set_charge_schedule`` for details.
         """
         self._ensure_token()
         return self._retry_on_token_expiry(self._get_charge_appointment, vin)
@@ -930,7 +933,14 @@ class LeapmotorApiClient:
             end_time: Schedule end time (e.g. "07:00").
             cycles: Days of the week (e.g. "1,2,3,4,5,6,7").
             circulation: Repeat mode (0=once, 1=repeat).
-            recharge: Auto-recharge flag (0=off, 1=on).
+            recharge: Auto-recharge flag (0=off, 1=on). Mirrors the official
+                app's "resume charging if schedule is missed" setting: when
+                on, the vehicle resumes/retries charging if it is unplugged
+                or falls outside the configured time window, instead of
+                waiting for the next scheduled cycle. Confirmed empirically:
+                toggling that app setting changes only this field
+                (``chargeScheduleRecharge`` / ``recharge``) in the schedule
+                returned by ``get_charge_schedule``.
         """
         charge_spec = RemoteActionCtlChargePlan(
             charge_enable=1 if enabled else 0,

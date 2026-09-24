@@ -649,6 +649,8 @@ class ChargePlan:
     end: str | None = None
     cycles: str | None = None
     circulation: int | None = None
+    # Auto-recharge flag (0=off, 1=on): mirrors the official app's "resume charging if
+    # schedule is missed" setting (resume/retry charging outside the configured window).
     recharge: int | None = None
     cancelled_once: int | None = None
 

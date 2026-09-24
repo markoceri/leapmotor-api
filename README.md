@@ -245,6 +245,9 @@ client.set_charge_schedule(
 client.unlock_charger("WLM...")
 ```
 
+> [!NOTE]
+> The `recharge` field of the charge schedule (`get_charge_schedule` / `set_charge_schedule`) mirrors the official app's **"resume charging if schedule is missed"** toggle — it makes the vehicle resume/retry charging if it's unplugged or falls outside the configured time window, instead of waiting for the next scheduled cycle. Confirmed against a real vehicle: toggling that setting in the app changed only this field between two consecutive `get_charge_schedule` calls (`recharge: 0` -> `recharge: 1`, all other fields unchanged).
+
 > [!TIP]
 > Consider creating a **shared/secondary account** in the Leapmotor app and sharing the vehicle with it. This avoids conflicts with your primary account sessions (e.g. being logged out from the phone app or **temporary account locks** on Leapmotor's servers).
 
