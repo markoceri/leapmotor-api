@@ -72,6 +72,7 @@ from leapmotor_api.models import (
     RemoteActionCtlWindows,
     RemoteActionResult,
     RemoteActionSpec,
+    ShareInvitation,
     TirePressure,
     Vehicle,
     VehicleAbility,
@@ -2306,6 +2307,72 @@ class TestMessageList:
     def test_missing_list_key(self) -> None:
         ml = MessageList.from_dict({"count": 0})
         assert ml.messages == []
+
+
+class TestShareInvitation:
+    # The shape /sharecar/getsharemsg answered for a B10 invitation with no end date.
+    DATA: dict[str, Any] = {
+        "msgid": 1790348570370,
+        "shareUserid": "123456",
+        "carCode": "LFZTEST0000000001",
+        "carId": "159533",
+        "nickName": "Owner",
+        "mobileNumber": None,
+        "carType": "B10",
+        "rightList": None,
+        "type": 1,
+        "moduleRights": "100,200,300,400",
+        "expireTime": None,
+        "shareTime": 1790348570370,
+        "durationType": 0,
+        "carAlias": "B10",
+        "email": "owner@example.com",
+    }
+
+    def test_from_dict(self) -> None:
+        inv = ShareInvitation.from_dict(self.DATA)
+        assert inv.msgid == 1790348570370
+        assert inv.share_user_id == "123456"
+        assert inv.vin == "LFZTEST0000000001"
+        assert inv.car_id == "159533"
+        assert inv.car_type == "B10"
+        assert inv.car_alias == "B10"
+        assert inv.owner_nickname == "Owner"
+        assert inv.owner_email == "owner@example.com"
+        assert inv.owner_mobile_number is None
+        assert inv.type == 1
+        assert inv.module_rights == [
+            ModuleRight.BASIC,
+            ModuleRight.VEHICLE_CONTROL,
+            ModuleRight.VEHICLE_POSITIONING,
+            ModuleRight.MILEAGE_ENERGY,
+        ]
+        assert inv.rights == []
+        assert inv.duration_type == 0
+        assert inv.share_time == 1790348570370
+        assert inv.expire_time is None
+        assert inv.raw == self.DATA
+
+    def test_rights_when_listed(self) -> None:
+        inv = ShareInvitation.from_dict({**self.DATA, "rightList": "110,190"})
+        assert inv.rights == [VehicleRight.LOCK, VehicleRight.BATTERY_PREHEAT]
+
+    def test_numeric_ids_become_strings(self) -> None:
+        inv = ShareInvitation.from_dict({**self.DATA, "shareUserid": 123456, "carId": 159533})
+        assert inv.share_user_id == "123456"
+        assert inv.car_id == "159533"
+
+    def test_share_datetime(self) -> None:
+        inv = ShareInvitation.from_dict(self.DATA)
+        dt = inv.share_datetime
+        assert dt is not None
+        assert dt.year == 2026
+
+    def test_share_datetime_none(self) -> None:
+        inv = ShareInvitation.from_dict({"msgid": 1})
+        assert inv.share_datetime is None
+        assert inv.share_user_id == ""
+        assert inv.vin == ""
 
 
 class TestRemoteActionCtlToggleCharge:

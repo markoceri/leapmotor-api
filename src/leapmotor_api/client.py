@@ -13,7 +13,7 @@ import uuid
 from datetime import date  # noqa: TCH003 - used at runtime (.isoformat())
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 import requests
 import urllib3
@@ -116,6 +116,7 @@ from .models import (
     RemoteActionCtlClimateSchedule,
     RemoteActionCtlPrepareCarSchedule,
     RemoteActionCtlSendDestination,
+    ShareInvitation,
     Vehicle,
     VehicleStatus,
 )
@@ -491,6 +492,78 @@ class LeapmotorApiClient:
         )
         body = self._parse_api_body(response["status_code"], response["body"], "unread message count")
         return int((body.get("data") or {}).get("unread", 0))
+
+    # ------------------------------------------------------------------
+    # Public API — Car Sharing (recipient side)
+    # ------------------------------------------------------------------
+
+    def get_share_invitations(self) -> list[ShareInvitation]:
+        """Fetch the car-share invitations waiting for this account.
+
+        The owner shares the car from the official app; until the invitation is accepted the
+        car is absent from :meth:`get_vehicle_list` and every vehicle call answers
+        ``No such permission``.
+        """
+        self._ensure_token()
+        return self._retry_on_token_expiry(self._get_share_invitations)
+
+    def _get_share_invitations(self) -> list[ShareInvitation]:
+        headers = build_signed_headers(
+            sign_key=self.sign_key,
+            device_id=self.device_id,
+            language=self.language,
+        ).to_dict()
+        headers.update(self._auth_headers())
+        response = self._post(
+            path="/carownerservice/oversea/sharecar/getsharemsg",
+            headers=headers,
+            data="",
+            cert=self.account_cert,
+        )
+        body = self._parse_api_body(response["status_code"], response["body"], "share invitations")
+        return [ShareInvitation.from_dict(item) for item in (body.get("data") or []) if isinstance(item, dict)]
+
+    def accept_share_invitation(self, invitation: ShareInvitation) -> dict[str, Any]:
+        """Accept a car-share invitation.
+
+        The car then appears in :meth:`get_vehicle_list` as a shared vehicle with its granted
+        ``rights`` (observed within seconds). Raises ``ValueError`` before any request when the
+        invitation carries no owner id or VIN.
+        """
+        return self._answer_share_invitation(invitation, state="yes")
+
+    def reject_share_invitation(self, invitation: ShareInvitation) -> dict[str, Any]:
+        """Reject a car-share invitation."""
+        return self._answer_share_invitation(invitation, state="no")
+
+    def _answer_share_invitation(self, invitation: ShareInvitation, *, state: str) -> dict[str, Any]:
+        if not invitation.share_user_id or not invitation.vin:
+            raise ValueError("share invitation without owner id or VIN cannot be answered")
+        self._ensure_token()
+        return self._retry_on_token_expiry(self._set_share_invitation_state, invitation, state)
+
+    def _set_share_invitation_state(self, invitation: ShareInvitation, state: str) -> dict[str, Any]:
+        auth = self._auth_headers()
+        body_params = {
+            "shareUserId": invitation.share_user_id,
+            "userId": auth["userId"],
+            "carCode": invitation.vin,
+            "state": state,
+        }
+        headers = build_signed_headers(
+            sign_key=self.sign_key,
+            device_id=self.device_id,
+            language=self.language,
+            body_params=body_params,
+        ).to_dict()
+        headers.update(auth)
+        response = self._post(
+            path="/carownerservice/oversea/sharecar/setokmsg",
+            headers=headers,
+            data=urlencode(body_params),
+            cert=self.account_cert,
+        )
+        return self._parse_api_body(response["status_code"], response["body"], "share invitation answer")
 
     # ------------------------------------------------------------------
     # Public API — Remote Control

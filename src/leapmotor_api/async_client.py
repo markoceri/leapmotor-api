@@ -19,6 +19,7 @@ if TYPE_CHECKING:
         ConsumptionLastWeekBreakdown,
         ConsumptionWeeklyRank,
         MessageList,
+        ShareInvitation,
         Vehicle,
         VehicleStatus,
     )
@@ -370,6 +371,15 @@ class AsyncLeapmotorApiClient:
 
     async def get_unread_message_count(self) -> int:
         return await asyncio.to_thread(self._client.get_unread_message_count)
+
+    async def get_share_invitations(self) -> list[ShareInvitation]:
+        return await asyncio.to_thread(self._client.get_share_invitations)
+
+    async def accept_share_invitation(self, invitation: ShareInvitation) -> dict[str, Any]:
+        return await asyncio.to_thread(self._client.accept_share_invitation, invitation)
+
+    async def reject_share_invitation(self, invitation: ShareInvitation) -> dict[str, Any]:
+        return await asyncio.to_thread(self._client.reject_share_invitation, invitation)
 
     async def get_consumption_weekly_rank(self, vehicle: Vehicle) -> ConsumptionWeeklyRank:
         """Fetch six-week energy consumption and ranking data."""

@@ -2414,3 +2414,59 @@ class MessageList:
             count=data.get("count", 0),
             messages=[Message.from_dict(m) for m in (data.get("list") or [])],
         )
+
+
+@dataclass(slots=True)
+class ShareInvitation:
+    """A car-share invitation waiting for this account (``/sharecar/getsharemsg``).
+
+    The owner creates it in the official app; the car joins ``get_vehicle_list()`` as a shared
+    car only once the invitation is accepted. ``rights`` is empty on the invitation itself —
+    the granted ``rightList`` shows up on the shared vehicle after acceptance.
+    """
+
+    msgid: int | None
+    share_user_id: str  # the owner's account id — echoed back as ``shareUserId`` on accept/reject
+    vin: str  # ``carCode``
+    car_id: str | None
+    car_type: str | None
+    car_alias: str | None
+    owner_nickname: str | None
+    owner_email: str | None
+    owner_mobile_number: str | None
+    type: int | None
+    module_rights: list[ModuleRight]
+    rights: list[VehicleRight]
+    duration_type: int | None
+    share_time: int | None  # epoch ms
+    expire_time: int | None  # epoch ms
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @property
+    def share_datetime(self) -> datetime | None:
+        """Convert share_time epoch ms to a datetime."""
+        if self.share_time is None:
+            return None
+        return datetime.fromtimestamp(self.share_time / 1000)  # noqa: DTZ006
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ShareInvitation:
+        """Build a ShareInvitation from a raw API dict."""
+        return cls(
+            msgid=data.get("msgid"),
+            share_user_id=str(data.get("shareUserid") or ""),
+            vin=str(data.get("carCode") or ""),
+            car_id=str(data["carId"]) if data.get("carId") is not None else None,
+            car_type=str(data["carType"]) if data.get("carType") is not None else None,
+            car_alias=data.get("carAlias"),
+            owner_nickname=data.get("nickName"),
+            owner_email=data.get("email"),
+            owner_mobile_number=data.get("mobileNumber"),
+            type=data.get("type"),
+            module_rights=_parse_csv_enum(data.get("moduleRights"), ModuleRight),
+            rights=_parse_csv_enum(data.get("rightList"), VehicleRight),
+            duration_type=data.get("durationType"),
+            share_time=data.get("shareTime"),
+            expire_time=data.get("expireTime"),
+            raw=data,
+        )

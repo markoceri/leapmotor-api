@@ -32,6 +32,8 @@ used by the `leapmotor-api` library.
   - [Image Package Download](#image-package-download)
   - [Message List](#message-list)
   - [Unread Message Count](#unread-message-count)
+  - [Share Invitations](#share-invitations)
+  - [Share Invitation Answer](#share-invitation-answer)
   - [Charging Daily Detail](#charging-daily-detail)
 - [Remote Control Endpoints](#remote-control-endpoints)
   - [Certificate Sync](#certificate-sync)
@@ -388,6 +390,42 @@ the previous calendar week (Monday 00:00 → Sunday 23:59:59 UTC).
 |---|---|
 | **Path** | `POST /carownerservice/oversea/message/v1/unread/count` |
 | **Body** | (empty) |
+
+### Share Invitations
+
+Invitations to a car another account shares with this one (recipient side).
+
+| | |
+|---|---|
+| **Path** | `POST /carownerservice/oversea/sharecar/getsharemsg` |
+| **Body** | (empty) |
+
+**Response** — `data` is a list, one entry per pending invitation:
+
+| Field | Type | Description |
+|---|---|---|
+| `msgid` | `int` | Invitation id |
+| `shareUserid` | `string` | Owner's account id — echoed back on accept/reject |
+| `carCode` | `string` | VIN |
+| `carId` | `string` | Car id |
+| `carType` | `string` | Model code (`B10`, `C10`, …) |
+| `carAlias` | `string` | Owner's name for the car |
+| `nickName`, `email`, `mobileNumber` | `string` | Owner |
+| `type` | `int` | `1` on the invitations seen so far |
+| `moduleRights` | `string` | Comma-separated codes of the categories the owner chose to share, any subset of the four in [ModuleRight](#moduleright--macro-permission-categories-modulerights) |
+| `rightList` | `string` | `null` on the invitation; the granted rights appear on the shared vehicle after acceptance |
+| `durationType` | `int` | `0` for a share with no end date (the only kind seen so far); `expireTime` is then `null` |
+| `shareTime`, `expireTime` | `int` | Epoch ms |
+
+### Share Invitation Answer
+
+| | |
+|---|---|
+| **Path** | `POST /carownerservice/oversea/sharecar/setokmsg` |
+| **Body** | `shareUserId={owner id}&userId={own id}&carCode={vin}&state=yes` (`no` to reject) |
+| **Signature** | HMAC-SHA256 (with the four fields in body_params) |
+
+Responds `{"result": 0, "code": 0, "data": null}`; the car is in `vehicle/v1/list` → `sharedcars` a few seconds later.
 
 ### Charging Daily Detail
 

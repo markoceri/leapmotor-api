@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
+from urllib.parse import parse_qsl
 
 import pytest
 
@@ -22,7 +23,7 @@ from leapmotor_api.exceptions import (
     LeapmotorMissingAppCertError,
 )
 from leapmotor_api.hemisphere import HemisphereGuard
-from leapmotor_api.models import CarType, MessageList, Vehicle
+from leapmotor_api.models import CarType, MessageList, ShareInvitation, Vehicle
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -659,4 +660,112 @@ class TestSetChargeLimit:
         assert sent["chargeEnable"] == 0
         assert sent["chargesoc"] == 80
         assert sent["starttime"] == "00:00"
+        client.close()
+
+
+# ---------------------------------------------------------------------------
+# Car sharing — invitations (recipient side)
+# ---------------------------------------------------------------------------
+
+
+class TestShareInvitationEndpoints:
+    INVITATION: dict[str, Any] = {
+        "msgid": 1790348570370,
+        "shareUserid": "123456",
+        "carCode": "LFZTEST0000000001",
+        "carId": "159533",
+        "nickName": "Owner",
+        "carType": "B10",
+        "rightList": None,
+        "type": 1,
+        "moduleRights": "100,200,300,400",
+        "shareTime": 1790348570370,
+        "durationType": 0,
+    }
+
+    def _setup_auth(self, client: LeapmotorApiClient) -> None:
+        client.token = "tok"
+        client.user_id = "uid"
+        client.sign_ikm = "ikm"
+        client.sign_salt = "salt"
+        client.sign_info = "info"
+        client.account_cert_file = "/tmp/cert.pem"
+        client.account_key_file = "/tmp/key.pem"
+
+    def test_get_share_invitations(self) -> None:
+        client = _make_client()
+        self._setup_auth(client)
+        api_response = {
+            "status_code": 200,
+            "body": json.dumps({"result": 0, "code": 0, "data": [self.INVITATION]}),
+        }
+        with patch.object(client, "_post", return_value=api_response) as post:
+            result = client.get_share_invitations()
+        assert post.call_args.kwargs["path"] == "/carownerservice/oversea/sharecar/getsharemsg"
+        assert post.call_args.kwargs["data"] == ""
+        assert len(result) == 1
+        assert isinstance(result[0], ShareInvitation)
+        assert result[0].vin == "LFZTEST0000000001"
+        assert result[0].share_user_id == "123456"
+        assert result[0].car_type == "B10"
+        client.close()
+
+    def test_get_share_invitations_empty(self) -> None:
+        client = _make_client()
+        self._setup_auth(client)
+        api_response = {"status_code": 200, "body": json.dumps({"result": 0, "code": 0, "data": []})}
+        with patch.object(client, "_post", return_value=api_response):
+            assert client.get_share_invitations() == []
+        client.close()
+
+    def _answer(self, method: str) -> dict[str, Any]:
+        """Run accept/reject with a mocked _post and return the request it sent."""
+        client = _make_client()
+        self._setup_auth(client)
+        invitation = ShareInvitation.from_dict(self.INVITATION)
+        api_response = {"status_code": 200, "body": json.dumps({"result": 0, "code": 0, "data": None})}
+        with patch.object(client, "_post", return_value=api_response) as post:
+            result = getattr(client, method)(invitation)
+        client.close()
+        assert result == {"result": 0, "code": 0, "data": None}
+        sent = dict(post.call_args.kwargs)
+        sent["form"] = dict(parse_qsl(sent["data"]))
+        return sent
+
+    def test_accept_share_invitation_sends_yes(self) -> None:
+        sent = self._answer("accept_share_invitation")
+        assert sent["path"] == "/carownerservice/oversea/sharecar/setokmsg"
+        assert sent["form"] == {
+            "shareUserId": "123456",
+            "userId": "uid",
+            "carCode": "LFZTEST0000000001",
+            "state": "yes",
+        }
+        assert sent["headers"]["userId"] == "uid"
+        assert sent["headers"]["token"] == "tok"
+        assert "sign" in sent["headers"]
+
+    def test_reject_share_invitation_sends_no(self) -> None:
+        sent = self._answer("reject_share_invitation")
+        assert sent["path"] == "/carownerservice/oversea/sharecar/setokmsg"
+        assert sent["form"]["state"] == "no"
+
+    def test_answer_refuses_an_incomplete_invitation_locally(self) -> None:
+        client = _make_client()
+        self._setup_auth(client)
+        invitation = ShareInvitation.from_dict({**self.INVITATION, "carCode": None})
+        with patch.object(client, "_post") as post:
+            with pytest.raises(ValueError, match="owner id or VIN"):
+                client.accept_share_invitation(invitation)
+        post.assert_not_called()
+        client.close()
+
+    def test_answer_failure_raises(self) -> None:
+        client = _make_client()
+        self._setup_auth(client)
+        invitation = ShareInvitation.from_dict(self.INVITATION)
+        api_response = {"status_code": 200, "body": json.dumps({"code": -1, "message": "No such permission"})}
+        with patch.object(client, "_post", return_value=api_response):
+            with pytest.raises(LeapmotorApiError, match="No such permission"):
+                client.accept_share_invitation(invitation)
         client.close()

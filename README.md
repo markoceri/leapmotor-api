@@ -167,6 +167,21 @@ for right in vehicle.rights:
 
 Remote commands automatically log a warning when the vehicle may lack the required permission, but still proceed (the server enforces permissions authoritatively).
 
+## Car Sharing
+
+A car the owner shares from the official app reaches the second account as an invitation. Until it is accepted the car is missing from `get_vehicle_list()` and every vehicle call fails with `No such permission`. The recipient side is exposed here:
+
+```python
+for invitation in client.get_share_invitations():
+    print(invitation.vin, invitation.car_type, invitation.owner_nickname, invitation.module_rights)
+    client.accept_share_invitation(invitation)   # or client.reject_share_invitation(invitation)
+
+# The car now shows up as a shared vehicle, with the rights the owner granted
+shared = [v for v in client.get_vehicle_list() if v.is_shared]
+```
+
+Creating or revoking a share (the owner side) is not covered.
+
 ## Remote Control
 
 Remote actions require the vehicle PIN (`operation_password`):

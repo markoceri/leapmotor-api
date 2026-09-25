@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from leapmotor_api.async_client import AsyncLeapmotorApiClient
 from leapmotor_api.client import LeapmotorApiClient
-from leapmotor_api.models import MessageList, Vehicle, VehicleStatus
+from leapmotor_api.models import MessageList, ShareInvitation, Vehicle, VehicleStatus
 
 
 def _make_cert_files() -> tuple[str, str]:
@@ -249,4 +249,36 @@ class TestAsyncClientMessages:
             result = asyncio.run(async_client.get_unread_message_count())
             mock.assert_called_once()
             assert result == 5
+        sync.close()
+
+
+class TestAsyncClientSharing:
+    def test_get_share_invitations_delegates(self) -> None:
+        sync = _make_sync_client()
+        async_client = AsyncLeapmotorApiClient(sync)
+        expected: list[ShareInvitation] = []
+        with patch.object(sync, "get_share_invitations", return_value=expected) as mock:
+            result = asyncio.run(async_client.get_share_invitations())
+            mock.assert_called_once()
+            assert result is expected
+        sync.close()
+
+    def test_accept_share_invitation_delegates(self) -> None:
+        sync = _make_sync_client()
+        async_client = AsyncLeapmotorApiClient(sync)
+        invitation = ShareInvitation.from_dict({"shareUserid": "1", "carCode": "VIN1"})
+        with patch.object(sync, "accept_share_invitation", return_value={"code": 0}) as mock:
+            result = asyncio.run(async_client.accept_share_invitation(invitation))
+            mock.assert_called_once_with(invitation)
+            assert result == {"code": 0}
+        sync.close()
+
+    def test_reject_share_invitation_delegates(self) -> None:
+        sync = _make_sync_client()
+        async_client = AsyncLeapmotorApiClient(sync)
+        invitation = ShareInvitation.from_dict({"shareUserid": "1", "carCode": "VIN1"})
+        with patch.object(sync, "reject_share_invitation", return_value={"code": 0}) as mock:
+            result = asyncio.run(async_client.reject_share_invitation(invitation))
+            mock.assert_called_once_with(invitation)
+            assert result == {"code": 0}
         sync.close()
