@@ -420,6 +420,33 @@ class TestTirePressure:
         assert result["rear_left"] is None
         assert result["rear_right"] == 2.6
 
+    def test_psi_conversion(self) -> None:
+        tp = TirePressure(
+            front_left_kpa=250,
+            front_right_kpa=255,
+            rear_left_kpa=260,
+            rear_right_kpa=245,
+        )
+        assert tp.front_left_psi == 36.26
+        assert tp.front_right_psi == 36.98
+        assert tp.rear_left_psi == 37.71
+        assert tp.rear_right_psi == 35.53
+
+    def test_psi_conversion_none(self) -> None:
+        tp = TirePressure()
+        assert tp.front_left_psi is None
+        assert tp.front_right_psi is None
+        assert tp.rear_left_psi is None
+        assert tp.rear_right_psi is None
+
+    def test_all_psi_dict(self) -> None:
+        tp = TirePressure(front_left_kpa=250, rear_right_kpa=260)
+        result = tp.all_psi
+        assert result["front_left"] == 36.26
+        assert result["front_right"] is None
+        assert result["rear_left"] is None
+        assert result["rear_right"] == 37.71
+
     def test_all_ok_true(self) -> None:
         tp = TirePressure(
             front_left_state=0,
@@ -768,6 +795,7 @@ class TestVehicleStatusFromDict:
         assert vs.tires.front_right_kpa == 255
         assert vs.tires.all_ok is True
         assert vs.tire_pressure_bar["front_left"] == 2.5
+        assert vs.tire_pressure_psi["front_left"] == 36.26
 
     def test_connectivity_fields(self) -> None:
         data: dict[str, Any] = {

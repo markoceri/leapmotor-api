@@ -588,6 +588,13 @@ class Vehicle:
         return any(int(m) == code for m in self.module_rights)
 
 
+_PSI_PER_KPA = 0.145037738
+
+
+def _kpa_to_psi(kpa: int | None) -> float | None:
+    return round(kpa * _PSI_PER_KPA, 2) if kpa is not None else None
+
+
 @dataclass(frozen=True, slots=True)
 class TirePressure:
     """Tire pressure readings for all four wheels."""
@@ -625,6 +632,32 @@ class TirePressure:
             "front_right": self.front_right_bar,
             "rear_left": self.rear_left_bar,
             "rear_right": self.rear_right_bar,
+        }
+
+    @property
+    def front_left_psi(self) -> float | None:
+        return _kpa_to_psi(self.front_left_kpa)
+
+    @property
+    def front_right_psi(self) -> float | None:
+        return _kpa_to_psi(self.front_right_kpa)
+
+    @property
+    def rear_left_psi(self) -> float | None:
+        return _kpa_to_psi(self.rear_left_kpa)
+
+    @property
+    def rear_right_psi(self) -> float | None:
+        return _kpa_to_psi(self.rear_right_kpa)
+
+    @property
+    def all_psi(self) -> dict[str, float | None]:
+        """All pressures in PSI as a dict."""
+        return {
+            "front_left": self.front_left_psi,
+            "front_right": self.front_right_psi,
+            "rear_left": self.rear_left_psi,
+            "rear_right": self.rear_right_psi,
         }
 
     @property
@@ -1072,6 +1105,11 @@ class VehicleStatus:
     def tire_pressure_bar(self) -> dict[str, float | None]:
         """Tire pressures converted to bar (raw values are in kPa)."""
         return self.tires.all_bar
+
+    @property
+    def tire_pressure_psi(self) -> dict[str, float | None]:
+        """Tire pressures converted to PSI (raw values are in kPa)."""
+        return self.tires.all_psi
 
 
 # ---------------------------------------------------------------------------

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Tire pressure in PSI ([#14](https://github.com/markoceri/leapmotor-api/issues/14)): `TirePressure.front_left_psi` / `front_right_psi` / `rear_left_psi` / `rear_right_psi`, the `all_psi` dict and `VehicleStatus.tire_pressure_psi`, alongside the existing bar conversion. The raw kPa values are unchanged. Thanks to @ASchneiderBR.
 - Vehicle status falls back to the shared C10 endpoint when a model's own segment answers HTTP 404 (as the B05 did before it was mapped). The fallback is remembered per model for the client's lifetime, logs a one-time warning asking for a report, and is recorded in `last_api_results` as `vehicle status c10 fallback` next to the original 404. If C10 also fails, the error names both segments tried. Other errors are unchanged.
 
 ### Changed

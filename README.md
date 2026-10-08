@@ -91,13 +91,13 @@ await client.close()
 | `status.climate` | `ac_switch`, `ac_setting`, `outdoor_temp`, `interior_temp`, `ac_operate_mode`, `ac_air_volume`, `ac_cooling_and_heating` |
 | `status.doors` | `is_locked`, `bbcm_back_door_status` |
 | `status.windows` | `left_front_window_percent`, `right_front_window_percent`, `sun_shade` |
-| `status.tires` | `front_left_bar`, `front_right_bar`, `rear_left_bar`, `rear_right_bar`, `all_ok` |
+| `status.tires` | `front_left_kpa`, `front_right_kpa`, `rear_left_kpa`, `rear_right_kpa` (raw), `*_bar`, `*_psi`, `all_bar`, `all_psi`, `all_ok` |
 | `status.connectivity` | `bluetooth_state`, `hotspot_state` |
 | `status.seat_comfort` | `driver_seat_heating`, `driver_seat_ventilation`, `steering_wheel_heating` |
 | `status.security` | `vehicle_security_active`, `sentry_mode`, `roof_opening` |
 | `status.ignition` | `bcm_key_position_on1`, `bcm_key_position_on3` |
 
-Top-level convenience properties: `status.is_locked`, `status.is_plugged`, `status.is_charging`, `status.is_parked`, `status.is_driving`, `status.is_regening`, `status.tire_pressure_bar`.
+Top-level convenience properties: `status.is_locked`, `status.is_plugged`, `status.is_charging`, `status.is_parked`, `status.is_driving`, `status.is_regening`, `status.tire_pressure_bar`, `status.tire_pressure_psi`.
 
 All fields are `T | None` — they are populated only when the vehicle reports the corresponding signal.
 
