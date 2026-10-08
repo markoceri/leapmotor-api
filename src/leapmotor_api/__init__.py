@@ -77,6 +77,7 @@ from .exceptions import (
     LeapmotorMissingAppCertError,
     LeapmotorPermissionError,
 )
+from .hemisphere import HemisphereGuard
 from .mappings import REMOTE_ACTION_SPECS
 from .models import (
     AcOperateMode,
@@ -207,6 +208,7 @@ __all__ = [
     "DrivingStatus",
     "FuelHeatingValue",
     "HealthyChargingValue",
+    "HemisphereGuard",
     "GearStatus",
     "HvacDirection",
     "HvacMode",
