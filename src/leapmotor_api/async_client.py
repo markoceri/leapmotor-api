@@ -11,14 +11,15 @@ import asyncio
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from datetime import date
+    from datetime import date, datetime
 
     from .client import LeapmotorApiClient
     from .models import (
         ChargeDailyDetailPage,
-        ConsumptionLastWeekBreakdown,
+        ConsumptionBreakdown,
         ConsumptionWeeklyRank,
         MessageList,
+        MileageEnergyHistory,
         ShareInvitation,
         Vehicle,
         VehicleStatus,
@@ -59,6 +60,12 @@ class AsyncLeapmotorApiClient:
 
     async def get_mileage_energy_detail(self, vehicle: Vehicle) -> dict[str, Any]:
         return await asyncio.to_thread(self._client.get_mileage_energy_detail, vehicle)
+
+    async def get_mileage_energy_history(
+        self, vehicle: Vehicle, *, start: datetime, end: datetime
+    ) -> MileageEnergyHistory:
+        """Fetch lifetime totals (including ``totalEnergy``) and per-day mileage/energy for a window."""
+        return await asyncio.to_thread(self._client.get_mileage_energy_history, vehicle, start=start, end=end)
 
     async def get_car_picture(self, vehicle: Vehicle) -> dict[str, Any]:
         return await asyncio.to_thread(self._client.get_car_picture, vehicle)
@@ -385,9 +392,15 @@ class AsyncLeapmotorApiClient:
         """Fetch six-week energy consumption and ranking data."""
         return await asyncio.to_thread(self._client.get_consumption_weekly_rank, vehicle)
 
-    async def get_consumption_last_week_breakdown(self, vehicle: Vehicle) -> ConsumptionLastWeekBreakdown:
-        """Fetch last-week energy split by driving, A/C, and other."""
+    async def get_consumption_last_week_breakdown(self, vehicle: Vehicle) -> ConsumptionBreakdown:
+        """Fetch last-week (Monday–Sunday, UTC) energy split by driving, A/C, and other."""
         return await asyncio.to_thread(self._client.get_consumption_last_week_breakdown, vehicle)
+
+    async def get_consumption_breakdown(
+        self, vehicle: Vehicle, *, start: datetime, end: datetime
+    ) -> ConsumptionBreakdown:
+        """Fetch energy split by driving, A/C, and other for an arbitrary window."""
+        return await asyncio.to_thread(self._client.get_consumption_breakdown, vehicle, start=start, end=end)
 
     async def get_charging_daily_detail(
         self,

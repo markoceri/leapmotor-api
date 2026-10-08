@@ -10,7 +10,7 @@ import os
 import tempfile
 import time
 import uuid
-from datetime import date  # noqa: TCH003 - used at runtime (.isoformat())
+from datetime import UTC, date, datetime  # noqa: TCH003 - used at runtime (.isoformat())
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 from urllib.parse import quote, urlencode
@@ -109,9 +109,10 @@ from .mappings import REMOTE_ACTION_SPECS
 from .models import (
     CarType,
     ChargeDailyDetailPage,
-    ConsumptionLastWeekBreakdown,
+    ConsumptionBreakdown,
     ConsumptionWeeklyRank,
     MessageList,
+    MileageEnergyHistory,
     RemoteActionCtlChargePlan,
     RemoteActionCtlClimateSchedule,
     RemoteActionCtlPrepareCarSchedule,
@@ -120,7 +121,7 @@ from .models import (
     Vehicle,
     VehicleStatus,
 )
-from .utils import previous_week_window_seconds
+from .utils import previous_week_window_seconds, validate_window
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -424,6 +425,36 @@ class LeapmotorApiClient:
             cert=self.account_cert,
         )
         return self._parse_api_body(response["status_code"], response["body"], "mileage energy detail")
+
+    def get_mileage_energy_history(self, vehicle: Vehicle, *, start: datetime, end: datetime) -> MileageEnergyHistory:
+        """Fetch lifetime totals (including ``totalEnergy``) and per-day mileage/energy for a window.
+
+        *start* and *end* must be timezone-aware.
+        """
+        validate_window(start, end)
+        self._ensure_token()
+        return self._retry_on_token_expiry(self._get_mileage_energy_history, vehicle, start, end)
+
+    def _get_mileage_energy_history(self, vehicle: Vehicle, start: datetime, end: datetime) -> MileageEnergyHistory:
+        # This endpoint takes the window in milliseconds, and it must be part of the signature.
+        begintime = str(int(start.timestamp() * 1000))
+        endtime = str(int(end.timestamp() * 1000))
+        headers = build_signed_headers(
+            sign_key=self.sign_key,
+            device_id=self.device_id,
+            vin=vehicle.vin,
+            language=self.language,
+            body_params={"begintime": begintime, "endtime": endtime},
+        ).to_dict()
+        headers.update(self._auth_headers())
+        response = self._post(
+            path="/carownerservice/oversea/drivingRecord/v1/mileage/energy/detail",
+            headers=headers,
+            data=f"endtime={endtime}&begintime={begintime}&vin={quote(vehicle.vin, safe='')}",
+            cert=self.account_cert,
+        )
+        body = self._parse_api_body(response["status_code"], response["body"], "mileage energy history")
+        return MileageEnergyHistory.from_dict(body.get("data") or {})
 
     def get_car_picture(self, vehicle: Vehicle) -> dict[str, Any]:
         """Fetch read-only car picture metadata."""
@@ -1116,13 +1147,31 @@ class LeapmotorApiClient:
         body = self._parse_api_body(response["status_code"], response["body"], "consumption weekly rank")
         return ConsumptionWeeklyRank.from_dict(body.get("data") or {})
 
-    def get_consumption_last_week_breakdown(self, vehicle: Vehicle) -> ConsumptionLastWeekBreakdown:
-        """Fetch last-week energy split by driving, A/C, and other."""
-        self._ensure_token()
-        return self._retry_on_token_expiry(self._get_consumption_last_week_breakdown, vehicle)
-
-    def _get_consumption_last_week_breakdown(self, vehicle: Vehicle) -> ConsumptionLastWeekBreakdown:
+    def get_consumption_last_week_breakdown(self, vehicle: Vehicle) -> ConsumptionBreakdown:
+        """Fetch last-week (Monday–Sunday, UTC) energy split by driving, A/C, and other."""
         begintime, endtime = previous_week_window_seconds()
+        start = datetime.fromtimestamp(begintime, tz=UTC)
+        end = datetime.fromtimestamp(endtime, tz=UTC)
+        self._ensure_token()
+        return self._retry_on_token_expiry(
+            self._get_consumption_breakdown, vehicle, start, end, label="consumption last week breakdown"
+        )
+
+    def get_consumption_breakdown(self, vehicle: Vehicle, *, start: datetime, end: datetime) -> ConsumptionBreakdown:
+        """Fetch energy split by driving, A/C, and other for an arbitrary window.
+
+        *start* and *end* must be timezone-aware.
+        """
+        validate_window(start, end)
+        self._ensure_token()
+        return self._retry_on_token_expiry(self._get_consumption_breakdown, vehicle, start, end)
+
+    def _get_consumption_breakdown(
+        self, vehicle: Vehicle, start: datetime, end: datetime, *, label: str = "consumption breakdown"
+    ) -> ConsumptionBreakdown:
+        # getLastweekEC takes the window in seconds, unlike mileage/energy/detail.
+        begintime = int(start.timestamp())
+        endtime = int(end.timestamp())
         headers = build_consumption_last_week_headers(
             sign_key=self.sign_key,
             device_id=self.device_id,
@@ -1139,8 +1188,8 @@ class LeapmotorApiClient:
             data=body,
             cert=self.account_cert,
         )
-        result = self._parse_api_body(response["status_code"], response["body"], "consumption last week breakdown")
-        return ConsumptionLastWeekBreakdown.from_dict(result.get("data") or {})
+        result = self._parse_api_body(response["status_code"], response["body"], label)
+        return ConsumptionBreakdown.from_dict(result.get("data") or {})
 
     def get_charging_daily_detail(
         self,

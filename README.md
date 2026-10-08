@@ -138,6 +138,26 @@ for week in weekly_rank.weekly:
     print(f"  {week.week_start} ~ {week.week_end}: {week.hundred_km_ec} kWh/100km")
 ```
 
+Both cloud statistics also accept an arbitrary window. Pass timezone-aware `datetime`s; the client converts them to the unit each endpoint expects:
+
+```python
+from datetime import datetime, timedelta, timezone
+
+end = datetime.now(timezone.utc)
+start = end - timedelta(days=7)
+
+# Energy split for any window (resolution goes down to about 15-20 minutes)
+breakdown = client.get_consumption_breakdown(vehicle, start=start, end=end)
+
+# Lifetime energy plus per-day mileage and energy over the window
+history = client.get_mileage_energy_history(vehicle, start=start, end=end)
+print(f"Lifetime energy: {history.total_energy_kwh} kWh over {history.total_mileage_km} km")
+for day in history.days:
+    print(f"  {day.day}: {day.mileage_km} km, {day.energy_kwh} kWh")
+```
+
+`total_energy_kwh` is the precise lifetime figure (standby included). The per-day `energy_kwh` is coarse: the cloud often rounds it to an integer.
+
 ## Vehicle Permissions
 
 The `Vehicle` object exposes the Leapmotor 3-tier permission system as typed enums:
