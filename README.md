@@ -87,7 +87,7 @@ await client.close()
 |---|---|
 | `status.battery` | `soc`, `expected_mileage`, `charge_state`, `is_charging`, `is_charge_fast_gun_insert`, `is_charge_slow_gun_insert`, `charging_power_kw`, `battery_power`, `dump_energy_kwh`, `charge_plan.*` |
 | `status.driving` | `speed`, `total_mileage`, `gear_status`, `is_parked` |
-| `status.location` | `latitude`, `longitude` |
+| `status.location` | `latitude`, `longitude`, `latitude_signed`, `longitude_signed` |
 | `status.climate` | `ac_switch`, `ac_setting`, `outdoor_temp`, `interior_temp`, `ac_operate_mode`, `ac_air_volume`, `ac_cooling_and_heating` |
 | `status.doors` | `is_locked`, `bbcm_back_door_status` |
 | `status.windows` | `left_front_window_percent`, `right_front_window_percent`, `sun_shade` |

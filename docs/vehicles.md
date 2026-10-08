@@ -244,11 +244,32 @@ works uniformly across all models.
 
 | Signal ID | Named Field | Description | Type |
 |---|---|---|---|
-| `3725` | `latitude` | Latitude | `float` |
-| `3724` | `longitude` | Longitude | `float` |
+| `3` | `latitude` | Latitude, **signed** | `float` |
+| `2` | `longitude` | Longitude, **signed** | `float` |
+| `3725` | `latitude` | Latitude, absolute value | `float` |
+| `3724` | `longitude` | Longitude, absolute value | `float` |
 
-> Signals `2190`/`2191` are used as **automatic GPS fallback** by the library
-> when the primary coordinates (`3725`/`3724`) are absent.
+The library takes each coordinate from the first signal present: `3` → `3725`
+→ `2190` for latitude, `2` → `3724` → `2191` for longitude. Only `2`/`3` carry
+the West/South sign, so `LocationStatus.latitude_signed` /
+`longitude_signed` record whether the signed signal was used.
+
+The cloud does not always send the signed pair, and occasionally puts the
+absolute value in it. `get_vehicle_status()` corrects both with
+`HemisphereGuard`, which remembers the last trusted sign per VIN:
+
+- a negative reading is always trusted (a lost sign can only show up as a
+  positive number);
+- an absolute-value reading gets the remembered sign back;
+- a positive signed reading against a remembered West/South sign is accepted
+  only within `max_jump_deg` (0.5°) of the last trusted position — a real
+  crossing passes through zero — or after `confirm_polls` (3) distinct frames
+  in a row agree.
+
+The memory lasts for the client's lifetime. To keep it across restarts, save
+`client.hemisphere_guard.export_state()` (a JSON-serializable dict) and pass
+`hemisphere_guard=HemisphereGuard(saved_state)` to the client. See
+[#17](https://github.com/markoceri/leapmotor-api/issues/17).
 
 ### Climate Control
 

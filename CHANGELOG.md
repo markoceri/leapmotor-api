@@ -7,8 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Fixed West/South cars jumping to the wrong hemisphere between polls on signal-based vehicles ([#17](https://github.com/markoceri/leapmotor-api/issues/17)). The 0.3.2 fix prefers the signed signals `2`/`3`, but the cloud sometimes omits them and occasionally puts the absolute value in them. The new `HemisphereGuard`, applied by `get_vehicle_status()`, remembers the last trusted sign per VIN: a negative reading is always trusted, an absolute-value reading gets the remembered sign back, and a positive signed reading that contradicts it is accepted only near the last trusted position or after 3 distinct frames in a row agree. The memory is in-process; persist it with `client.hemisphere_guard.export_state()` and restore it with `LeapmotorApiClient(hemisphere_guard=HemisphereGuard(state))`. Thanks to @ProtossBlaster for the analysis.
+
 ### Added
 - Tire pressure in PSI ([#14](https://github.com/markoceri/leapmotor-api/issues/14)): `TirePressure.front_left_psi` / `front_right_psi` / `rear_left_psi` / `rear_right_psi`, the `all_psi` dict and `VehicleStatus.tire_pressure_psi`, alongside the existing bar conversion. The raw kPa values are unchanged. Thanks to @ASchneiderBR.
+- `LocationStatus.latitude_signed` / `longitude_signed`: whether a signal-based coordinate came from the signed signals (`3`/`2`) or from an absolute-value fallback.
 - Vehicle status falls back to the shared C10 endpoint when a model's own segment answers HTTP 404 (as the B05 did before it was mapped). The fallback is remembered per model for the client's lifetime, logs a one-time warning asking for a report, and is recorded in `last_api_results` as `vehicle status c10 fallback` next to the original 404. If C10 also fails, the error names both segments tried. Other errors are unchanged.
 
 ### Changed
