@@ -104,6 +104,7 @@ from .exceptions import (
     LeapmotorAuthError,
     LeapmotorMissingAppCertError,
 )
+from .hemisphere import HemisphereGuard
 from .mappings import REMOTE_ACTION_SPECS
 from .models import (
     CarType,
@@ -156,6 +157,7 @@ class LeapmotorApiClient:
         device_id: str | None = None,
         verify_ssl: bool = False,  # Leapmotor servers use self-signed certs
         language: str = DEFAULT_LANGUAGE,
+        hemisphere_guard: HemisphereGuard | None = None,
     ) -> None:
         self.username = username
         self.password = password
@@ -188,6 +190,9 @@ class LeapmotorApiClient:
         # Status path segments that answered 404 and worked on C10, so later
         # requests go straight to C10 (e.g. {"x99": "c10"}).
         self._status_path_overrides: dict[str, str] = {}
+        # Keeps West/South cars in their hemisphere when the cloud drops the
+        # coordinate sign. Pass a guard built from a saved state to persist it.
+        self.hemisphere_guard = hemisphere_guard or HemisphereGuard()
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -352,7 +357,8 @@ class LeapmotorApiClient:
 
     def _get_vehicle_status(self, vehicle: Vehicle) -> VehicleStatus:
         raw = self._get_vehicle_raw_status(vehicle)
-        return VehicleStatus.from_dict(raw.get("data") or {})
+        status = VehicleStatus.from_dict(raw.get("data") or {})
+        return self.hemisphere_guard.apply(vehicle.vin, status)
 
     def get_vehicle_raw_status(self, vehicle: Vehicle) -> dict[str, Any]:
         """Fetch raw status dict for one vehicle (for debug / forward-compatibility)."""

@@ -21,6 +21,7 @@ from leapmotor_api.exceptions import (
     LeapmotorAuthError,
     LeapmotorMissingAppCertError,
 )
+from leapmotor_api.hemisphere import HemisphereGuard
 from leapmotor_api.models import CarType, MessageList, Vehicle
 
 # ---------------------------------------------------------------------------
@@ -545,6 +546,46 @@ class TestVehicleStatusC10Fallback:
         message = str(exc_info.value)
         assert "No message available" in message
         assert "'x99' (HTTP 404) and 'c10'" in message
+        client.close()
+
+
+class TestVehicleStatusHemisphere:
+    """``get_vehicle_status`` keeps the coordinate sign across polls (issue #17)."""
+
+    def _vehicle(self) -> Vehicle:
+        return Vehicle(
+            vin="VIN1",
+            car_type="C10",
+            email=None,
+            plate_number=None,
+            car_id="1",
+            user_nickname="N",
+            vehicle_nickname="N",
+            is_shared=False,
+        )
+
+    def test_restores_sign_when_signed_pair_is_missing(self) -> None:
+        client = _make_client()
+        frames = [
+            {"data": {"signal": {"2": -9.14, "3": 38.72, "3724": 9.14, "3725": 38.72}}},
+            {"data": {"signal": {"3724": 9.14, "3725": 38.72}}},
+        ]
+        with patch.object(client, "_get_vehicle_raw_status", side_effect=frames):
+            first = client._get_vehicle_status(self._vehicle())
+            second = client._get_vehicle_status(self._vehicle())
+        assert first.location.longitude == -9.14
+        assert second.location.longitude == -9.14
+        client.close()
+
+    def test_accepts_saved_guard(self) -> None:
+        guard = HemisphereGuard({"VIN1": {"longitude": {"sign": -1, "last": -9.14}}})
+        client = _make_client(hemisphere_guard=guard)
+        assert client.hemisphere_guard is guard
+        with patch.object(
+            client, "_get_vehicle_raw_status", return_value={"data": {"signal": {"3724": 9.14, "3725": 38.72}}}
+        ):
+            status = client._get_vehicle_status(self._vehicle())
+        assert status.location.longitude == -9.14
         client.close()
 
 
