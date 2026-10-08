@@ -840,10 +840,18 @@ class DrivingStatus:
 
 @dataclass(slots=True)
 class LocationStatus:
-    """GPS location."""
+    """GPS location.
+
+    ``latitude_signed`` / ``longitude_signed`` tell where a signal-based
+    (C10/B10) coordinate came from: ``True`` for the signed signals ``3``/``2``,
+    ``False`` for the absolute-value fallbacks, whose West/South sign is unknown.
+    They stay ``None`` for named-field (T03-style) responses.
+    """
 
     latitude: float | None = None
     longitude: float | None = None
+    latitude_signed: bool | None = None
+    longitude_signed: bool | None = None
 
 
 @dataclass(slots=True)
@@ -1136,6 +1144,8 @@ _DRIVING_FIELDS: dict[str, str] = {
 _LOCATION_FIELDS: dict[str, str] = {
     "latitude": "latitude",
     "longitude": "longitude",
+    "_latitudeSigned": "latitude_signed",
+    "_longitudeSigned": "longitude_signed",
 }
 
 _CLIMATE_FIELDS: dict[str, str] = {
@@ -1351,15 +1361,15 @@ def _merge_signal_to_named(status_data: dict[str, Any]) -> dict[str, Any]:
     # The signed signals must win so West-longitude (Portugal/UK) and
     # South-latitude positions are not mirrored to the wrong hemisphere.
     # See https://github.com/markoceri/leapconnect/issues/21
-    if "longitude" not in merged:
-        for lon_signal in ("2", "3724", "2191"):
-            if lon_signal in signal:
-                merged["longitude"] = signal[lon_signal]
-                break
-    if "latitude" not in merged:
-        for lat_signal in ("3", "3725", "2190"):
-            if lat_signal in signal:
-                merged["latitude"] = signal[lat_signal]
+    # Whether the signed signal was used is recorded so a stateful caller
+    # (see ``HemisphereGuard``) can restore the sign of an absolute value.
+    for named_field, signal_ids in (("longitude", ("2", "3724", "2191")), ("latitude", ("3", "3725", "2190"))):
+        if named_field in merged:
+            continue
+        for signal_id in signal_ids:
+            if signal_id in signal:
+                merged[named_field] = signal[signal_id]
+                merged[f"_{named_field}Signed"] = signal_id == signal_ids[0]
                 break
 
     # Convert signal timestamp (milliseconds) to collectTime string

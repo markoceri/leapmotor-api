@@ -1046,6 +1046,25 @@ class TestVehicleStatusFromDict:
         assert vs.location.latitude == 40.85812
         assert vs.location.longitude == 14.28319
 
+    def test_signal_based_location_signed_flags(self) -> None:
+        """The source of each coordinate is recorded (issue #17)."""
+        signed = VehicleStatus.from_dict({"signal": {"2": -8.52341, "3": 38.98765}})
+        assert signed.location.longitude_signed is True
+        assert signed.location.latitude_signed is True
+
+        absolute = VehicleStatus.from_dict({"signal": {"3725": 38.98765, "2191": 8.52341}})
+        assert absolute.location.longitude_signed is False
+        assert absolute.location.latitude_signed is False
+
+        mixed = VehicleStatus.from_dict({"signal": {"2": -8.52341, "3725": 38.98765}})
+        assert mixed.location.longitude_signed is True
+        assert mixed.location.latitude_signed is False
+
+    def test_named_location_has_no_signed_flags(self) -> None:
+        vs = VehicleStatus.from_dict({"latitude": 40.85812, "longitude": 14.28319})
+        assert vs.location.latitude_signed is None
+        assert vs.location.longitude_signed is None
+
     def test_signal_based_doors(self) -> None:
         data: dict[str, Any] = {
             "signal": {"1298": 1, "1277": 0, "1278": 0, "1279": 0, "1280": 0, "1281": 0},
