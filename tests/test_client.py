@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import logging
 import os
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -23,7 +26,14 @@ from leapmotor_api.exceptions import (
     LeapmotorMissingAppCertError,
 )
 from leapmotor_api.hemisphere import HemisphereGuard
-from leapmotor_api.models import CarType, MessageList, ShareInvitation, Vehicle
+from leapmotor_api.models import (
+    CarType,
+    ConsumptionBreakdown,
+    MessageList,
+    MileageEnergyHistory,
+    ShareInvitation,
+    Vehicle,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -768,4 +778,131 @@ class TestShareInvitationEndpoints:
         with patch.object(client, "_post", return_value=api_response):
             with pytest.raises(LeapmotorApiError, match="No such permission"):
                 client.accept_share_invitation(invitation)
+        client.close()
+
+
+class TestWindowedStatisticsEndpoints:
+    VEHICLE = Vehicle(
+        vin="VIN1",
+        car_type="B10",
+        email=None,
+        plate_number=None,
+        car_id="1",
+        user_nickname="N",
+        vehicle_nickname="N",
+        is_shared=False,
+    )
+    START = datetime(2026, 8, 29, tzinfo=UTC)
+    END = datetime(2026, 8, 30, 23, 59, 59, tzinfo=UTC)
+
+    def _setup_auth(self, client: LeapmotorApiClient) -> None:
+        client.token = "tok"
+        client.user_id = "uid"
+        client.sign_ikm = "ikm"
+        client.sign_salt = "salt"
+        client.sign_info = "info"
+        client.account_cert_file = "/tmp/cert.pem"
+        client.account_key_file = "/tmp/key.pem"
+
+    @staticmethod
+    def _sign(client: LeapmotorApiClient, *fields: str) -> str:
+        return hmac.new(client.sign_key, "".join(fields).encode("utf-8"), hashlib.sha256).hexdigest()
+
+    def test_get_mileage_energy_history(self) -> None:
+        client = _make_client()
+        self._setup_auth(client)
+        data = {
+            "totalmileage": 12084,
+            "totalmileageMile": "7508.6",
+            "deliveryDays": 210,
+            "totalEnergy": "2154.3",
+            "totalAccumulatedMileage": 84,
+            "totalAccumulatedMileageMile": "52.2",
+            "detail": [
+                {
+                    "day": "2026-08-29",
+                    "xDay": 1787961600000,
+                    "currentMileage": 12010,
+                    "accumulatedMileage": 10,
+                    "accumulatedMileageMile": "6.2",
+                    "accumulatedEnergyConsume": 2,
+                },
+                {"day": "2026-08-30", "accumulatedMileage": 74},
+            ],
+        }
+        api_response = {"status_code": 200, "body": json.dumps({"result": 0, "code": 0, "data": data})}
+        with patch.object(client, "_post", return_value=api_response) as post:
+            result = client.get_mileage_energy_history(self.VEHICLE, start=self.START, end=self.END)
+        sent = post.call_args.kwargs
+        h = sent["headers"]
+        assert sent["path"] == "/carownerservice/oversea/drivingRecord/v1/mileage/energy/detail"
+        assert dict(parse_qsl(sent["data"])) == {
+            "begintime": "1787961600000",
+            "endtime": "1788134399000",
+            "vin": "VIN1",
+        }
+        # Window in milliseconds and part of the signature (field order as in leapmotor-ha).
+        assert h["sign"] == self._sign(
+            client, h["acceptLanguage"], "1787961600000", h["channel"], h["deviceId"], h["deviceType"],
+            "1788134399000", h["nonce"], h["source"], h["timestamp"], h["version"], "VIN1",
+        )  # fmt: skip
+        assert isinstance(result, MileageEnergyHistory)
+        assert result.total_energy_kwh == 2154.3
+        assert result.total_mileage_km == 12084.0
+        assert result.delivery_days == 210
+        assert result.window_mileage_km == 84.0
+        assert [d.day for d in result.days] == ["2026-08-29", "2026-08-30"]
+        assert result.days[0].energy_kwh == 2.0
+        assert result.days[1].energy_kwh is None
+        client.close()
+
+    def test_get_consumption_breakdown(self) -> None:
+        client = _make_client()
+        self._setup_auth(client)
+        api_response = {
+            "status_code": 200,
+            "body": json.dumps({"result": 0, "code": 0, "data": {"driverEC": "9.4", "acEC": "0.3", "otherEC": "0.1"}}),
+        }
+        with patch.object(client, "_post", return_value=api_response) as post:
+            result = client.get_consumption_breakdown(self.VEHICLE, start=self.START, end=self.END)
+        sent = post.call_args.kwargs
+        h = sent["headers"]
+        assert sent["path"] == "/carownerservice/oversea/drivingRecord/v1/getLastweekEC"
+        assert dict(parse_qsl(sent["data"])) == {"begintime": "1787961600", "endtime": "1788134399", "carvin": "VIN1"}
+        assert h["sign"] == self._sign(
+            client, h["acceptLanguage"], "1787961600", "VIN1", h["channel"], h["deviceId"], h["deviceType"],
+            "1788134399", h["nonce"], h["source"], h["timestamp"], h["version"],
+        )  # fmt: skip
+        assert result == ConsumptionBreakdown(driver_ec=9.4, ac_ec=0.3, other_ec=0.1)
+        assert "consumption breakdown" in client.last_api_results
+        client.close()
+
+    def test_last_week_breakdown_uses_previous_week_and_legacy_label(self) -> None:
+        client = _make_client()
+        self._setup_auth(client)
+        api_response = {"status_code": 200, "body": json.dumps({"result": 0, "code": 0, "data": {"driverEC": "1"}})}
+        with (
+            patch("leapmotor_api.client.previous_week_window_seconds", return_value=(1787961600, 1788566399)),
+            patch.object(client, "_post", return_value=api_response) as post,
+        ):
+            result = client.get_consumption_last_week_breakdown(self.VEHICLE)
+        assert dict(parse_qsl(post.call_args.kwargs["data"]))["begintime"] == "1787961600"
+        assert dict(parse_qsl(post.call_args.kwargs["data"]))["endtime"] == "1788566399"
+        assert result.driver_ec == 1.0
+        assert "consumption last week breakdown" in client.last_api_results
+        client.close()
+
+    @pytest.mark.parametrize(
+        ("start", "end"),
+        [
+            (datetime(2026, 8, 29), datetime(2026, 8, 30)),  # noqa: DTZ001
+            (datetime(2026, 8, 30, tzinfo=UTC), datetime(2026, 8, 29, tzinfo=UTC)),
+        ],
+    )
+    @pytest.mark.parametrize("method", ["get_mileage_energy_history", "get_consumption_breakdown"])
+    def test_rejects_invalid_window(self, method: str, start: datetime, end: datetime) -> None:
+        client = _make_client()
+        with patch.object(client, "_post") as post, pytest.raises(ValueError):
+            getattr(client, method)(self.VEHICLE, start=start, end=end)
+        post.assert_not_called()
         client.close()

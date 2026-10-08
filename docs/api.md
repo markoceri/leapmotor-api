@@ -305,6 +305,32 @@ The response format varies by model — see [docs/vehicles.md](vehicles.md).
 | `totalmileageMile` | Total mileage (miles) |
 | `deliveryDays` | Days since delivery |
 
+**With a time window:** add `begintime` / `endtime` to the body and to the
+signature (`body_params`, sorted alphabetically with the other fields). Here
+they are Unix epoch **milliseconds**, unlike `getLastweekEC`. A vin-only
+signature with the window in the body fails with code 39.
+
+| | |
+|---|---|
+| **Body** | `endtime={epoch_ms}&begintime={epoch_ms}&vin={VIN}` |
+| **Signature** | HMAC-SHA256 (with `begintime`, `endtime` in body_params) |
+
+The response then also contains:
+
+| Field | Description |
+|---|---|
+| `totalEnergy` | Lifetime energy consumption (kWh, standby included) |
+| `totalAccumulatedMileage` | Mileage over the window (km) |
+| `totalAccumulatedMileageMile` | Mileage over the window (miles) |
+| `detail[].day` | Day (`YYYY-MM-DD`) |
+| `detail[].xDay` | Day start timestamp (ms) |
+| `detail[].currentMileage` | Odometer at that day (km) |
+| `detail[].accumulatedMileage` | Mileage that day (km) |
+| `detail[].accumulatedMileageMile` | Mileage that day (miles) |
+| `detail[].accumulatedEnergyConsume` | Energy that day (kWh, coarse, often integer-rounded; may be missing) |
+
+**Typed model:** `MileageEnergyHistory` (contains `list[DailyMileageEnergy]`), returned by `get_mileage_energy_history()`
+
 ### Weekly Energy Consumption and Ranking
 
 | | |
@@ -338,8 +364,11 @@ The response format varies by model — see [docs/vehicles.md](vehicles.md).
 | **Body** | `endtime={epoch_s}&begintime={epoch_s}&carvin={VIN}` |
 | **Signature** | HMAC-SHA256 (with `endtime`, `begintime`, `carvin` in body_params) |
 
-The `begintime` / `endtime` parameters are Unix epoch seconds delimiting
-the previous calendar week (Monday 00:00 → Sunday 23:59:59 UTC).
+The `begintime` / `endtime` parameters are Unix epoch **seconds**. Despite
+the endpoint name, any window is accepted: `get_consumption_last_week_breakdown()`
+sends the previous calendar week (Monday 00:00 → Sunday 23:59:59 UTC), while
+`get_consumption_breakdown()` sends the window it is given. Windows down to
+about 15–20 minutes return data, and an empty window returns nothing.
 
 **Response (data):**
 
@@ -349,7 +378,7 @@ the previous calendar week (Monday 00:00 → Sunday 23:59:59 UTC).
 | `acEC` | Air conditioning energy consumption (kWh, string) |
 | `otherEC` | Other systems energy consumption (kWh, string) |
 
-**Typed model:** `ConsumptionLastWeekBreakdown` (with `total_ec` computed property)
+**Typed model:** `ConsumptionBreakdown` (with `total_ec` computed property; `ConsumptionLastWeekBreakdown` is an alias)
 
 ### Vehicle Image
 

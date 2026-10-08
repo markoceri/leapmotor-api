@@ -2258,8 +2258,8 @@ class ConsumptionWeeklyRank:
 
 
 @dataclass(frozen=True, slots=True)
-class ConsumptionLastWeekBreakdown:
-    """Last-week energy breakdown by category (kWh)."""
+class ConsumptionBreakdown:
+    """Energy breakdown by category (kWh) over a time window."""
 
     driver_ec: float
     ac_ec: float
@@ -2271,12 +2271,79 @@ class ConsumptionLastWeekBreakdown:
         return round(self.driver_ec + self.ac_ec + self.other_ec, 2)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ConsumptionLastWeekBreakdown:
+    def from_dict(cls, data: dict[str, Any]) -> ConsumptionBreakdown:
         """Build from the API response ``data`` field."""
         return cls(
             driver_ec=float(data.get("driverEC", 0)),
             ac_ec=float(data.get("acEC", 0)),
             other_ec=float(data.get("otherEC", 0)),
+        )
+
+
+ConsumptionLastWeekBreakdown = ConsumptionBreakdown
+"""Backward-compatible alias of :class:`ConsumptionBreakdown`."""
+
+
+def _opt_float(value: Any) -> float | None:
+    """Convert an API number (possibly a string) to float, keeping missing values as None."""
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+@dataclass(frozen=True, slots=True)
+class DailyMileageEnergy:
+    """One day of the windowed ``mileage/energy/detail`` response."""
+
+    day: str
+    day_ms: int | None
+    odometer_km: float | None
+    mileage_km: float | None
+    mileage_mi: float | None
+    energy_kwh: float | None
+    """Coarse daily energy (the cloud often rounds it to an integer); None when the day has none."""
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> DailyMileageEnergy:
+        """Build from one ``detail[]`` item."""
+        return cls(
+            day=data.get("day", ""),
+            day_ms=data.get("xDay"),
+            odometer_km=_opt_float(data.get("currentMileage")),
+            mileage_km=_opt_float(data.get("accumulatedMileage")),
+            mileage_mi=_opt_float(data.get("accumulatedMileageMile")),
+            energy_kwh=_opt_float(data.get("accumulatedEnergyConsume")),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class MileageEnergyHistory:
+    """Lifetime totals plus a per-day breakdown over a time window."""
+
+    total_mileage_km: float | None
+    total_mileage_mi: float | None
+    delivery_days: int | None
+    total_energy_kwh: float | None
+    """Lifetime energy (kWh, standby included): the precise figure, unlike the daily values."""
+    window_mileage_km: float | None
+    window_mileage_mi: float | None
+    days: list[DailyMileageEnergy]
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> MileageEnergyHistory:
+        """Build from the API response ``data`` field."""
+        delivery_days = _opt_float(data.get("deliveryDays"))
+        return cls(
+            total_mileage_km=_opt_float(data.get("totalmileage")),
+            total_mileage_mi=_opt_float(data.get("totalmileageMile")),
+            delivery_days=int(delivery_days) if delivery_days is not None else None,
+            total_energy_kwh=_opt_float(data.get("totalEnergy")),
+            window_mileage_km=_opt_float(data.get("totalAccumulatedMileage")),
+            window_mileage_mi=_opt_float(data.get("totalAccumulatedMileageMile")),
+            days=[DailyMileageEnergy.from_dict(d) for d in data.get("detail") or []],
         )
 
 

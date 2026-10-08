@@ -28,9 +28,11 @@ from leapmotor_api.models import (
     ClimateOperate,
     ClimatePosition,
     ClimateWindshield,
+    ConsumptionBreakdown,
     ConsumptionLastWeekBreakdown,
     ConsumptionRank,
     ConsumptionWeeklyRank,
+    DailyMileageEnergy,
     DoorStatus,
     DrivingStatus,
     GearStatus,
@@ -38,6 +40,7 @@ from leapmotor_api.models import (
     HvacMode,
     Message,
     MessageList,
+    MileageEnergyHistory,
     ModuleRight,
     RecirculationMode,
     RemoteActionCtlAutopark,
@@ -2023,6 +2026,63 @@ class TestConsumptionLastWeekBreakdown:
         assert breakdown.ac_ec == 0.0
         assert breakdown.other_ec == 0.0
         assert breakdown.total_ec == 0.0
+
+
+class TestConsumptionBreakdown:
+    def test_last_week_alias(self) -> None:
+        assert ConsumptionLastWeekBreakdown is ConsumptionBreakdown
+
+
+class TestMileageEnergyHistory:
+    def test_from_dict(self) -> None:
+        data: dict[str, Any] = {
+            "totalmileage": 12084,
+            "totalmileageMile": "7508.6",
+            "deliveryDays": "210",
+            "totalEnergy": "2154.3",
+            "totalAccumulatedMileage": 84,
+            "totalAccumulatedMileageMile": "52.2",
+            "detail": [
+                {
+                    "day": "2026-08-30",
+                    "xDay": 1788048000000,
+                    "currentMileage": 12084,
+                    "accumulatedMileage": 74,
+                    "accumulatedMileageMile": "46.0",
+                    "accumulatedEnergyConsume": "14.5",
+                }
+            ],
+        }
+        history = MileageEnergyHistory.from_dict(data)
+        assert history.total_mileage_km == 12084.0
+        assert history.total_mileage_mi == 7508.6
+        assert history.delivery_days == 210
+        assert history.total_energy_kwh == 2154.3
+        assert history.window_mileage_km == 84.0
+        assert history.window_mileage_mi == 52.2
+        assert history.days == [
+            DailyMileageEnergy(
+                day="2026-08-30",
+                day_ms=1788048000000,
+                odometer_km=12084.0,
+                mileage_km=74.0,
+                mileage_mi=46.0,
+                energy_kwh=14.5,
+            )
+        ]
+
+    def test_from_dict_without_window(self) -> None:
+        # Vin-only response: no window fields, no totalEnergy.
+        history = MileageEnergyHistory.from_dict({"totalmileage": 12084, "deliveryDays": 210})
+        assert history.total_energy_kwh is None
+        assert history.window_mileage_km is None
+        assert history.days == []
+
+    def test_daily_missing_values(self) -> None:
+        day = DailyMileageEnergy.from_dict({"day": "2026-08-29", "accumulatedEnergyConsume": ""})
+        assert day.energy_kwh is None
+        assert day.mileage_km is None
+        assert day.day_ms is None
 
 
 # ---------------------------------------------------------------------------

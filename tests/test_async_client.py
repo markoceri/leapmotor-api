@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import tempfile
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import patch
 
@@ -205,6 +206,32 @@ class TestAsyncClientMileage:
             result = asyncio.run(async_client.get_mileage_energy_detail(vehicle))
             mock.assert_called_once_with(vehicle)
             assert result == expected
+        sync.close()
+
+    def test_get_mileage_energy_history_delegates(self) -> None:
+        sync = _make_sync_client()
+        async_client = AsyncLeapmotorApiClient(sync)
+        vehicle = _make_vehicle()
+        start = datetime(2026, 8, 29, tzinfo=UTC)
+        end = datetime(2026, 8, 30, tzinfo=UTC)
+        expected = object()
+        with patch.object(sync, "get_mileage_energy_history", return_value=expected) as mock:
+            result = asyncio.run(async_client.get_mileage_energy_history(vehicle, start=start, end=end))
+            mock.assert_called_once_with(vehicle, start=start, end=end)
+            assert result is expected
+        sync.close()
+
+    def test_get_consumption_breakdown_delegates(self) -> None:
+        sync = _make_sync_client()
+        async_client = AsyncLeapmotorApiClient(sync)
+        vehicle = _make_vehicle()
+        start = datetime(2026, 8, 29, tzinfo=UTC)
+        end = datetime(2026, 8, 30, tzinfo=UTC)
+        expected = object()
+        with patch.object(sync, "get_consumption_breakdown", return_value=expected) as mock:
+            result = asyncio.run(async_client.get_consumption_breakdown(vehicle, start=start, end=end))
+            mock.assert_called_once_with(vehicle, start=start, end=end)
+            assert result is expected
         sync.close()
 
 
