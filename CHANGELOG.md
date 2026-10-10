@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-10
+
 ### Fixed
 - `ac_off()` now powers the A/C off on the T03 and on the B10/C10 ([#9](https://github.com/markoceri/leapmotor-api/issues/9)). It used to send `operate=close`, which the cloud accepts (`code=0`) but neither model executes: the B10 only switches the HVAC to AUTO and the T03 ignores it. It now sends `operate=off`: inside the full climate body on the T03, as the bare `{"operate":"off"}` on every other model. The payload is chosen from the target vehicle's `carType` through the new `REMOTE_ACTION_CAR_TYPE_SPECS` mapping.
 - Fixed West/South cars jumping to the wrong hemisphere between polls on signal-based vehicles ([#17](https://github.com/markoceri/leapmotor-api/issues/17)). The 0.3.2 fix prefers the signed signals `2`/`3`, but the cloud sometimes omits them and occasionally puts the absolute value in them. The new `HemisphereGuard`, applied by `get_vehicle_status()`, remembers the last trusted sign per VIN: a negative reading is always trusted, an absolute-value reading gets the remembered sign back, and a positive signed reading that contradicts it is accepted only near the last trusted position or after 3 distinct frames in a row agree. The memory is in-process; persist it with `client.hemisphere_guard.export_state()` and restore it with `LeapmotorApiClient(hemisphere_guard=HemisphereGuard(state))`. Thanks to @ProtossBlaster for the analysis.
