@@ -129,6 +129,8 @@ python examples/commands.py battery-preheat-off
 python examples/commands.py ac-on                              # turn AC on with defaults
 python examples/commands.py ac-on --temp 22 --mode cold --wind 3
 python examples/commands.py ac-off                             # turn AC off
+python examples/commands.py ac-off --wait 15                   # re-read acSwitch after 15 s
+python examples/commands.py ac-off --wait 0                    # send only, no status check
 python examples/commands.py quick-cool
 python examples/commands.py quick-heat
 python examples/commands.py defrost                            # windshield defrost
@@ -137,6 +139,8 @@ python examples/commands.py ac-schedule '2026-05-17 06:00:00' --temp 28 --mode h
 python examples/commands.py ac-schedule-cancel                 # cancel all schedules
 python examples/commands.py ac-schedule-list                   # list active schedules
 ```
+
+`ac-on` and `ac-off` print `acSwitch` from the vehicle status before the command and again after `--wait` seconds (default 8). The cloud answers `code=0` even to commands the car ignores, so the change in `acSwitch` is the real result.
 
 #### Sentry mode
 
