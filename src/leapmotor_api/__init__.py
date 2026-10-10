@@ -78,7 +78,7 @@ from .exceptions import (
     LeapmotorPermissionError,
 )
 from .hemisphere import HemisphereGuard
-from .mappings import REMOTE_ACTION_SPECS
+from .mappings import REMOTE_ACTION_CAR_TYPE_SPECS, REMOTE_ACTION_SPECS
 from .models import (
     AcOperateMode,
     ApiRequestHeaders,
@@ -128,6 +128,7 @@ from .models import (
     RemoteActionCtlBleKeyRestart,
     RemoteActionCtlChargePlan,
     RemoteActionCtlClimate,
+    RemoteActionCtlClimateOff,
     RemoteActionCtlClimateSchedule,
     RemoteActionCtlFindCar,
     RemoteActionCtlFotaDownload,
@@ -234,6 +235,7 @@ __all__ = [
     "MusicOperation",
     "On3Value",
     "RearviewMirrorHeatValue",
+    "REMOTE_ACTION_CAR_TYPE_SPECS",
     "REMOTE_ACTION_SPECS",
     "REMOTE_CTL_AC_OFF",
     "REMOTE_CTL_AC_ON",
@@ -302,6 +304,7 @@ __all__ = [
     "RemoteActionCtlBatteryPreheat",
     "RemoteActionCtlChargePlan",
     "RemoteActionCtlClimate",
+    "RemoteActionCtlClimateOff",
     "RemoteActionCtlClimateSchedule",
     "RemoteActionCtlFindCar",
     "RemoteActionCtlFotaDownload",

@@ -906,3 +906,51 @@ class TestWindowedStatisticsEndpoints:
             getattr(client, method)(self.VEHICLE, start=start, end=end)
         post.assert_not_called()
         client.close()
+
+
+# ---------------------------------------------------------------------------
+# ac_off — per-model payload (issue #9)
+# ---------------------------------------------------------------------------
+
+
+class TestAcOff:
+    """ac_off() must send operate=off in the shape each model executes."""
+
+    @staticmethod
+    def _sent_cmd_content(car_type: str) -> dict[str, Any]:
+        client = _make_client(operation_password="1234")
+        client.token = "tok"
+        vehicle = Vehicle(
+            vin="VIN1",
+            car_type=car_type,
+            email=None,
+            plate_number=None,
+            car_id="1",
+            user_nickname="N",
+            vehicle_nickname="N",
+            is_shared=False,
+        )
+        with (
+            patch.object(client, "_find_vehicle_by_vin", return_value=vehicle),
+            patch.object(client, "_remote_control_raw", return_value={"code": 0}) as raw,
+        ):
+            client.ac_off("VIN1")
+        client.close()
+        assert raw.call_args.kwargs["cmd_id"] == "170"
+        return json.loads(raw.call_args.kwargs["cmd_content"])
+
+    @pytest.mark.parametrize("car_type", ["B10", "C10", "B05"])
+    def test_bare_operate_off(self, car_type: str) -> None:
+        assert self._sent_cmd_content(car_type) == {"operate": "off"}
+
+    @pytest.mark.parametrize("car_type", ["T03", "t03", " T03 "])
+    def test_t03_full_body_with_operate_off(self, car_type: str) -> None:
+        assert self._sent_cmd_content(car_type) == {
+            "circle": "out",
+            "mode": "wind",
+            "operate": "off",
+            "position": "all",
+            "temperature": "26",
+            "windlevel": "3",
+            "wshld": "0",
+        }

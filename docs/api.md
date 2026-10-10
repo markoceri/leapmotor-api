@@ -622,7 +622,7 @@ All climate profiles use `cmd_id=170`. The `cmd_content` is a JSON with:
 |---|---|---|
 | `circle` | `in`, `out` | Air recirculation |
 | `mode` | `cold`, `hot`, `wind` | Climate mode |
-| `operate` | `manual`, `auto`, `close` | Operation mode (`close` = turn off) |
+| `operate` | `manual`, `auto`, `close`, `off` | Operation mode (`off` = full power-off, see below) |
 | `position` | `all` | Air distribution position |
 | `temperature` | `"18"` – `"32"` | Target temperature (°C) |
 | `windlevel` | `"1"` – `"7"` | Fan level |
@@ -633,10 +633,18 @@ All climate profiles use `cmd_id=170`. The `cmd_content` is a JSON with:
 | Action | operate | circle | mode | temp | wind | wshld |
 |---|---|---|---|---|---|---|
 | AC On (default) | `manual` | `out` | `wind` | 26 | 3 | 0 |
-| AC Off | `close` | `out` | `wind` | 26 | 3 | 0 |
 | Quick Cool | `manual` | `in` | `cold` | 18 | 7 | 0 |
 | Quick Heat | `manual` | `in` | `hot` | 32 | 7 | 0 |
 | Windshield Defrost | `manual` | `in` | `hot` | 32 | 7 | 1 |
+
+**AC Off** (`ac_off()`) sends `operate=off`, in a shape that depends on the model. The cloud answers `code=0` to every variant, so only the `acSwitch` signal (`1938`) shows whether the car executed it.
+
+| Model | cmd_content |
+|---|---|
+| T03 | `{"circle":"out","mode":"wind","operate":"off","position":"all","temperature":"26","windlevel":"3","wshld":"0"}` |
+| B10, C10, others | `{"operate":"off"}` |
+
+The B10 ignores the full body with `operate=close` (it only switches the HVAC to AUTO). The T03 ignores both that body and the bare `{"operate":"off"}`. Per-model payloads live in `REMOTE_ACTION_CAR_TYPE_SPECS`.
 
 Requires PIN.
 

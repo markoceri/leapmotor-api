@@ -3,6 +3,9 @@
 import argparse
 import os
 import sys
+import time
+from collections.abc import Callable
+from typing import Any
 
 from leapmotor_api.client import LeapmotorApiClient
 
@@ -58,9 +61,25 @@ COMMANDS: dict[str, dict[str, object]] = {
             {"name": "--temp", "type": str, "help": "Temperature (e.g. 22)", "default": None},
             {"name": "--mode", "type": str, "help": "Mode: cold, hot, wind", "default": None},
             {"name": "--wind", "type": str, "help": "Wind level (e.g. 3)", "default": None},
+            {
+                "name": "--wait",
+                "type": int,
+                "help": "Seconds before re-reading acSwitch from the vehicle status (0 = skip)",
+                "default": 12,
+            },
         ],
     },
-    "ac-off": {"help": "Turn AC off", "args": []},
+    "ac-off": {
+        "help": "Turn AC off",
+        "args": [
+            {
+                "name": "--wait",
+                "type": int,
+                "help": "Seconds before re-reading acSwitch from the vehicle status (0 = skip)",
+                "default": 12,
+            },
+        ],
+    },
     "ac-schedule": {
         "help": "Set climate schedule (start_time, temp, mode, wind, days)",
         "args": [
@@ -209,6 +228,30 @@ def get_vin(client: LeapmotorApiClient, requested_vin: str | None) -> str:
     return vin
 
 
+def print_ac_switch(client: LeapmotorApiClient, vin: str, label: str) -> None:
+    """Print acSwitch (signal 1938) as read from the vehicle status."""
+    vehicle = next(v for v in client.get_vehicle_list() if v.vin == vin)
+    status = client.get_vehicle_status(vehicle)
+    print(f"acSwitch {label} ({vehicle.car_type}): {status.climate.ac_switch}")
+
+
+def verify_ac_command(client: LeapmotorApiClient, vin: str, wait: int, send: Callable[[], Any]) -> Any:
+    """Send an A/C command and show whether the car executed it.
+
+    The cloud answers ``code=0`` even to commands the car ignores, so the
+    only reliable check is acSwitch in the vehicle status after the command.
+    """
+    if wait <= 0:
+        return send()
+    print_ac_switch(client, vin, "before")
+    result = send()
+    print(f"OK: {result}")
+    print(f"Waiting {wait}s before re-reading the vehicle status...")
+    time.sleep(wait)
+    print_ac_switch(client, vin, "after")
+    return None
+
+
 def execute_command(client: LeapmotorApiClient, vin: str, args: argparse.Namespace) -> None:
     cmd = args.command
     result = None
@@ -273,12 +316,10 @@ def execute_command(client: LeapmotorApiClient, vin: str, args: argparse.Namespa
             params["mode"] = args.mode
         if args.wind:
             params["windlevel"] = args.wind
-        result = client.ac_on(vin, params=params or None)
+        result = verify_ac_command(client, vin, args.wait, lambda: client.ac_on(vin, params=params or None))
     elif cmd == "ac-off":
-        result = client.ac_off(vin)
+        result = verify_ac_command(client, vin, args.wait, lambda: client.ac_off(vin))
     elif cmd == "ac-schedule":
-        import time
-
         device_id = "example"
         now_ms = str(int(time.time() * 1000))
         days_list = [int(d) for d in args.days.split(",") if d.strip()] if args.days else []

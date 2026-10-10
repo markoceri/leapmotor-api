@@ -1553,6 +1553,7 @@ class ClimateOperate(StrEnum):
     MANUAL = "manual"
     AUTO = "auto"
     CLOSE = "close"
+    OFF = "off"
 
 
 class ClimatePosition(StrEnum):
@@ -1911,6 +1912,23 @@ class RemoteActionCtlClimate(RemoteActionSpec):
             },
             separators=(",", ":"),
         )
+
+
+@dataclass(slots=True)
+class RemoteActionCtlClimateOff(RemoteActionSpec):
+    """Climate full power-off (cmd_id=170) with the bare ``{"operate":"off"}`` body.
+
+    Drives ``acSwitch`` (signal ``1938``) to ``0`` on the B10/C10. ``operate=close`` only
+    switches their HVAC to AUTO. The T03 ignores this bare body and needs ``operate=off``
+    inside the full :class:`RemoteActionCtlClimate` body instead.
+    """
+
+    operate: str = ClimateOperate.OFF
+    cmd_id: str = field(default="170", init=False)
+    cmd_content: str = field(default="", init=False)
+
+    def __post_init__(self) -> None:
+        self.cmd_content = json.dumps({"operate": self.operate}, separators=(",", ":"))
 
 
 @dataclass(slots=True)
