@@ -92,6 +92,7 @@ from .models import (
     RemoteActionCtlBleKeyRestart,
     RemoteActionCtlChargePlan,
     RemoteActionCtlClimate,
+    RemoteActionCtlClimateOff,
     RemoteActionCtlClimateSchedule,
     RemoteActionCtlFindCar,
     RemoteActionCtlFotaDownload,
@@ -178,16 +179,7 @@ REMOTE_ACTION_SPECS: dict[str, RemoteActionSpec] = {
         wshld=ClimateWindshield.OFF,
         required_right=VehicleRight.CLIMATE,
     ),
-    REMOTE_CTL_AC_OFF: RemoteActionCtlClimate(
-        circle=ClimateCircle.OUT,
-        mode=ClimateMode.WIND,
-        operate=ClimateOperate.CLOSE,
-        position=ClimatePosition.ALL,
-        temperature="26",
-        windlevel=3,
-        wshld=ClimateWindshield.OFF,
-        required_right=VehicleRight.CLIMATE,
-    ),
+    REMOTE_CTL_AC_OFF: RemoteActionCtlClimateOff(required_right=VehicleRight.CLIMATE),
     REMOTE_CTL_QUICK_COOL: RemoteActionCtlClimate(
         circle=ClimateCircle.IN,
         mode=ClimateMode.COLD,
@@ -295,6 +287,31 @@ REMOTE_ACTION_SPECS: dict[str, RemoteActionSpec] = {
     REMOTE_CTL_PREPARE_CAR_SCHEDULE: RemoteActionCtlPrepareCarSchedule(required_right=VehicleRight.PREPARE_CAR_ALARM),
     REMOTE_CTL_SEAT_ADJUST: RemoteActionCtlSeatAdjust(required_right=VehicleRight.SEAT_ADJUST),
     REMOTE_CTL_PILOTED_PARKING: RemoteActionCtlPilotedParking(required_right=VehicleRight.PILOTED_PARKING),
+}
+
+# ---------------------------------------------------------------------------
+# Per-model remote action overrides
+# ---------------------------------------------------------------------------
+
+# Some models need a different payload for the same action. The cloud answers
+# ``code=0`` to both shapes, but only the right one is executed by the car.
+# ``_remote_control`` picks the override for the target vehicle's ``carType``
+# and falls back to :data:`REMOTE_ACTION_SPECS`.
+REMOTE_ACTION_CAR_TYPE_SPECS: dict[str, dict[CarType, RemoteActionSpec]] = {
+    # The T03 ignores the bare ``{"operate":"off"}`` body (and ``operate=close``):
+    # it powers off only with ``operate=off`` inside the full climate body.
+    REMOTE_CTL_AC_OFF: {
+        CarType.T03: RemoteActionCtlClimate(
+            circle=ClimateCircle.OUT,
+            mode=ClimateMode.WIND,
+            operate=ClimateOperate.OFF,
+            position=ClimatePosition.ALL,
+            temperature="26",
+            windlevel=3,
+            wshld=ClimateWindshield.OFF,
+            required_right=VehicleRight.CLIMATE,
+        ),
+    },
 }
 
 # ---------------------------------------------------------------------------

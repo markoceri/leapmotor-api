@@ -2228,6 +2228,7 @@ class TestEnumValues:
         assert ClimateOperate.MANUAL == "manual"
         assert ClimateOperate.AUTO == "auto"
         assert ClimateOperate.CLOSE == "close"
+        assert ClimateOperate.OFF == "off"
 
     def test_climate_position(self) -> None:
         assert ClimatePosition.ALL == "all"

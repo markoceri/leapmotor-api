@@ -105,7 +105,7 @@ from .exceptions import (
     LeapmotorMissingAppCertError,
 )
 from .hemisphere import HemisphereGuard
-from .mappings import REMOTE_ACTION_SPECS
+from .mappings import REMOTE_ACTION_CAR_TYPE_SPECS, REMOTE_ACTION_SPECS
 from .models import (
     CarType,
     ChargeDailyDetailPage,
@@ -117,6 +117,7 @@ from .models import (
     RemoteActionCtlClimateSchedule,
     RemoteActionCtlPrepareCarSchedule,
     RemoteActionCtlSendDestination,
+    RemoteActionSpec,
     ShareInvitation,
     Vehicle,
     VehicleStatus,
@@ -129,6 +130,14 @@ if TYPE_CHECKING:
 _T = TypeVar("_T")
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _car_type_spec(action: str, vehicle: Vehicle) -> RemoteActionSpec | None:
+    """Return the model-specific spec for ``action`` on ``vehicle``, if any."""
+    overrides = REMOTE_ACTION_CAR_TYPE_SPECS.get(action)
+    if not overrides or not vehicle.car_type:
+        return None
+    return overrides.get(CarType(vehicle.car_type.strip()))
 
 
 def _vehicle_status_car_type_path(car_type: str) -> str:
@@ -1278,6 +1287,7 @@ class LeapmotorApiClient:
             )
 
         vehicle = self._find_vehicle_by_vin(vin)
+        spec = _car_type_spec(action, vehicle) or spec
         if spec.required_right is not None and not vehicle.has_right(spec.required_right):
             _LOGGER.warning(
                 "Vehicle %s may lack permission for '%s' (requires right %s=%d). "
