@@ -202,6 +202,27 @@ shared = [v for v in client.get_vehicle_list() if v.is_shared]
 
 Creating or revoking a share (the owner side) is not covered.
 
+## Software Updates (OTA)
+
+`get_software_info()` returns the installed software version and, when the cloud offers one, the OTA update waiting to be installed, with its release notes and packages. **The information is available only to the account that owns the car**: for an account the car is shared with, the cloud answers `No such permission` and the call raises `LeapmotorPermissionError`.
+
+```python
+from leapmotor_api import LeapmotorPermissionError
+
+try:
+    software = client.get_software_info(vehicle)
+except LeapmotorPermissionError:
+    print("Only the owner account sees the software version")
+else:
+    if software.update_available:
+        new = software.new_version
+        print(f"Update {new.version}: {new.download_size / 1e9:.2f} GB in {len(new.packages)} packages")
+        for note in new.release_notes_for("it-IT"):
+            print(f"- {note.title}: {note.content}")
+```
+
+Each `SoftwarePackage` carries a signed `download_url`; it is kept out of `repr()`, keep it out of logs too.
+
 ## Remote Control
 
 Remote actions require the vehicle PIN (`operation_password`):

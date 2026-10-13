@@ -34,6 +34,7 @@ used by the `leapmotor-api` library.
   - [Unread Message Count](#unread-message-count)
   - [Share Invitations](#share-invitations)
   - [Share Invitation Answer](#share-invitation-answer)
+  - [Software Version and OTA Update](#software-version-and-ota-update)
   - [Charging Daily Detail](#charging-daily-detail)
 - [Remote Control Endpoints](#remote-control-endpoints)
   - [Certificate Sync](#certificate-sync)
@@ -455,6 +456,31 @@ Invitations to a car another account shares with this one (recipient side).
 | **Signature** | HMAC-SHA256 (with the four fields in body_params) |
 
 Responds `{"result": 0, "code": 0, "data": null}`; the car is in `vehicle/v1/list` → `sharedcars` a few seconds later.
+
+### Software Version and OTA Update
+
+Installed software version and the pending OTA update. **Answered only for the account that owns the car**: an account the car is shared with gets `{"code": 40, "message": "No such permission", "data": null}`.
+
+| | |
+|---|---|
+| **Path** | `POST /carownerservice/oversea/hotspot/fetch` |
+| **Body** | `vin={vin}` |
+| **Signature** | HMAC-SHA256 (standard, with `vin`) |
+| **Client** | `get_software_info(vehicle)` → `SoftwareInfo` |
+
+**Response** — `data`:
+
+| Field | Type | Description |
+|---|---|---|
+| `currentVersion.generalVersion` | `string` | Installed version (a T03 answered `0.00.00`) |
+| `currentVersion.time` | `int` | Install time, epoch ms |
+| `currentVersion.logJsonMultiLang` | `list` | Release notes, same shape as below |
+| `newVersion` | `object` | Absent when the car is up to date |
+| `newVersion.generalVersion` | `string` | Version waiting to be installed |
+| `newVersion.requestVersionId` | `int` | Id of the update campaign |
+| `newVersion.state` | `int` | `1` seen while the update is offered |
+| `newVersion.logJsonMultiLang` | `list` | `[{"language": "it-IT", "data": [{"title", "content"}]}]` |
+| `newVersion.updateItemList` | `list` | One package per ECU: `product`, `softversion`, `softNumber` (build date), `hardware`, `fileName`, `fileSize` (bytes), `pyid` (CAN address or name), `md5`, `sha256`, `sign`, `downloadURL` (signed link) |
 
 ### Charging Daily Detail
 

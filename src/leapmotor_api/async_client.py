@@ -21,6 +21,7 @@ if TYPE_CHECKING:
         MessageList,
         MileageEnergyHistory,
         ShareInvitation,
+        SoftwareInfo,
         Vehicle,
         VehicleStatus,
     )
@@ -69,6 +70,14 @@ class AsyncLeapmotorApiClient:
 
     async def get_car_picture(self, vehicle: Vehicle) -> dict[str, Any]:
         return await asyncio.to_thread(self._client.get_car_picture, vehicle)
+
+    async def get_software_info(self, vehicle: Vehicle) -> SoftwareInfo:
+        """Fetch the installed software version and the pending OTA update, if any.
+
+        Available only to the account that owns the car; raises ``LeapmotorPermissionError``
+        for an account the car is shared with.
+        """
+        return await asyncio.to_thread(self._client.get_software_info, vehicle)
 
     async def lock_vehicle(self, vin: str) -> dict[str, Any]:
         return await asyncio.to_thread(self._client.lock_vehicle, vin)

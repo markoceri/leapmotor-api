@@ -103,6 +103,7 @@ from .exceptions import (
     LeapmotorApiError,
     LeapmotorAuthError,
     LeapmotorMissingAppCertError,
+    LeapmotorPermissionError,
 )
 from .hemisphere import HemisphereGuard
 from .mappings import REMOTE_ACTION_CAR_TYPE_SPECS, REMOTE_ACTION_SPECS
@@ -119,6 +120,7 @@ from .models import (
     RemoteActionCtlSendDestination,
     RemoteActionSpec,
     ShareInvitation,
+    SoftwareInfo,
     Vehicle,
     VehicleStatus,
 )
@@ -483,6 +485,39 @@ class LeapmotorApiClient:
             cert=self.account_cert,
         )
         return self._parse_api_body(response["status_code"], response["body"], "car picture")
+
+    def get_software_info(self, vehicle: Vehicle) -> SoftwareInfo:
+        """Fetch the installed software version and the pending OTA update, if any.
+
+        The information is available only to the account that **owns** the car: for an
+        account the car is shared with, the cloud answers ``code 40`` (``No such permission``)
+        and this raises :class:`LeapmotorPermissionError`.
+        """
+        self._ensure_token()
+        return self._retry_on_token_expiry(self._get_software_info, vehicle)
+
+    def _get_software_info(self, vehicle: Vehicle) -> SoftwareInfo:
+        label = "software info"
+        headers = build_signed_headers(
+            sign_key=self.sign_key, device_id=self.device_id, vin=vehicle.vin, language=self.language
+        ).to_dict()
+        headers.update(self._auth_headers())
+        response = self._post(
+            path="/carownerservice/oversea/hotspot/fetch",
+            headers=headers,
+            data=f"vin={quote(vehicle.vin, safe='')}",
+            cert=self.account_cert,
+        )
+        try:
+            body = self._parse_api_body(response["status_code"], response["body"], label)
+        except LeapmotorApiError as exc:
+            if self.last_api_results.get(label, {}).get("code") == 40:
+                raise LeapmotorPermissionError(
+                    f"Leapmotor {label} failed: {exc}. The software version is available only "
+                    "to the account that owns the car."
+                ) from exc
+            raise
+        return SoftwareInfo.from_dict(body.get("data") or {})
 
     # ------------------------------------------------------------------
     # Public API — Messages

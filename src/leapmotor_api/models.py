@@ -2501,6 +2501,142 @@ class MessageList:
         )
 
 
+# ---------------------------------------------------------------------------
+# Software (OTA) models
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class SoftwareReleaseNote:
+    """One section of the release notes of a software version."""
+
+    title: str | None
+    content: str | None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SoftwareReleaseNote:
+        """Build from one ``logJsonMultiLang[].data[]`` item."""
+        return cls(title=data.get("title"), content=data.get("content"))
+
+
+@dataclass(frozen=True, slots=True)
+class SoftwarePackage:
+    """One ECU package of a pending software update (``newVersion.updateItemList[]``)."""
+
+    seq: int | None
+    product: str | None  # ECU part code, e.g. ``LP-IVI010-AA``
+    soft_version: str | None
+    soft_number: str | None  # build date, ``YYYYMMDD``
+    hardware: str | None
+    file_name: str | None
+    file_size: int | None  # bytes
+    ecu_id: str | None  # ``pyid``: CAN address (``0x7B2``) or a name (``IVI``)
+    md5: str | None
+    sha256: str | None
+    download_url: str | None = field(default=None, repr=False)
+    """Signed download link: keep it out of logs."""
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SoftwarePackage:
+        """Build from one ``updateItemList[]`` item."""
+        file_size = _opt_float(data.get("fileSize"))
+        return cls(
+            seq=data.get("seq"),
+            product=data.get("product"),
+            soft_version=data.get("softversion"),
+            soft_number=data.get("softNumber"),
+            hardware=data.get("hardware"),
+            file_name=data.get("fileName"),
+            file_size=int(file_size) if file_size is not None else None,
+            ecu_id=data.get("pyid"),
+            md5=data.get("md5"),
+            sha256=data.get("sha256"),
+            download_url=data.get("downloadURL"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SoftwareVersion:
+    """A vehicle software version: the installed one or the one waiting to be installed."""
+
+    version: str | None  # ``generalVersion``, e.g. ``1.03.12``
+    install_time: int | None  # epoch ms, installed version only
+    request_version_id: int | None  # pending version only
+    state: int | None  # pending version only; ``1`` seen while an update is offered
+    release_notes: dict[str, list[SoftwareReleaseNote]]
+    """Release notes by language code (``it-IT``, ``en-US``, ...)."""
+    packages: list[SoftwarePackage]
+
+    @property
+    def install_datetime(self) -> datetime | None:
+        """Convert install_time epoch ms to a datetime."""
+        if not self.install_time:
+            return None
+        return datetime.fromtimestamp(self.install_time / 1000)  # noqa: DTZ006
+
+    @property
+    def download_size(self) -> int:
+        """Total size of the packages in bytes."""
+        return sum(p.file_size or 0 for p in self.packages)
+
+    def release_notes_for(self, language: str) -> list[SoftwareReleaseNote]:
+        """Release notes in *language*, as the official app picks them.
+
+        Exact code first (``it-IT``), then the same language under another country, then
+        English, then the first language available. Empty when the version has no notes.
+        """
+        if language in self.release_notes:
+            return self.release_notes[language]
+        lang = language.split("-")[0]
+        for wanted in (lang, "en"):
+            for code, notes in self.release_notes.items():
+                if code.split("-")[0] == wanted:
+                    return notes
+        return next(iter(self.release_notes.values()), [])
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SoftwareVersion:
+        """Build from ``currentVersion`` or ``newVersion``."""
+        return cls(
+            version=data.get("generalVersion"),
+            install_time=data.get("time"),
+            request_version_id=data.get("requestVersionId"),
+            state=data.get("state"),
+            release_notes={
+                entry["language"]: [SoftwareReleaseNote.from_dict(n) for n in entry.get("data") or []]
+                for entry in data.get("logJsonMultiLang") or []
+                if entry.get("language")
+            },
+            packages=[SoftwarePackage.from_dict(p) for p in data.get("updateItemList") or []],
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SoftwareInfo:
+    """Installed vehicle software and the pending OTA update, if any (``/hotspot/fetch``)."""
+
+    current_version: SoftwareVersion | None
+    new_version: SoftwareVersion | None
+    """The update waiting to be installed; None when the car is up to date."""
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
+
+    @property
+    def update_available(self) -> bool:
+        """True if an OTA update is waiting to be installed."""
+        return self.new_version is not None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SoftwareInfo:
+        """Build from the API response ``data`` field."""
+        current = data.get("currentVersion")
+        new = data.get("newVersion")
+        return cls(
+            current_version=SoftwareVersion.from_dict(current) if current else None,
+            new_version=SoftwareVersion.from_dict(new) if new else None,
+            raw=data,
+        )
+
+
 @dataclass(slots=True)
 class ShareInvitation:
     """A car-share invitation waiting for this account (``/sharecar/getsharemsg``).

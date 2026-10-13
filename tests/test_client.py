@@ -24,6 +24,7 @@ from leapmotor_api.exceptions import (
     LeapmotorApiError,
     LeapmotorAuthError,
     LeapmotorMissingAppCertError,
+    LeapmotorPermissionError,
 )
 from leapmotor_api.hemisphere import HemisphereGuard
 from leapmotor_api.models import (
@@ -32,6 +33,7 @@ from leapmotor_api.models import (
     MessageList,
     MileageEnergyHistory,
     ShareInvitation,
+    SoftwareInfo,
     Vehicle,
 )
 
@@ -905,6 +907,55 @@ class TestWindowedStatisticsEndpoints:
         with patch.object(client, "_post") as post, pytest.raises(ValueError):
             getattr(client, method)(self.VEHICLE, start=start, end=end)
         post.assert_not_called()
+        client.close()
+
+
+class TestSoftwareInfo:
+    VEHICLE = TestWindowedStatisticsEndpoints.VEHICLE
+
+    def _client(self) -> LeapmotorApiClient:
+        client = _make_client()
+        TestWindowedStatisticsEndpoints()._setup_auth(client)
+        return client
+
+    def test_get_software_info(self) -> None:
+        client = self._client()
+        data = {"currentVersion": {"generalVersion": "0.00.00"}, "newVersion": {"generalVersion": "1.03.12"}}
+        api_response = {"status_code": 200, "body": json.dumps({"result": 0, "code": 0, "data": data})}
+        with patch.object(client, "_post", return_value=api_response) as post:
+            result = client.get_software_info(self.VEHICLE)
+        sent = post.call_args.kwargs
+        h = sent["headers"]
+        assert sent["path"] == "/carownerservice/oversea/hotspot/fetch"
+        assert sent["data"] == "vin=VIN1"
+        assert h["sign"] == TestWindowedStatisticsEndpoints._sign(
+            client, h["acceptLanguage"], h["channel"], h["deviceId"], h["deviceType"],
+            h["nonce"], h["source"], h["timestamp"], h["version"], "VIN1",
+        )  # fmt: skip
+        assert isinstance(result, SoftwareInfo)
+        assert result.update_available is True
+        assert result.new_version is not None
+        assert result.new_version.version == "1.03.12"
+        assert client.last_api_results["software info"]["code"] == 0
+        client.close()
+
+    def test_shared_account_raises_permission_error(self) -> None:
+        client = self._client()
+        body = {"code": 40, "result": 40, "message": "No such permission", "data": None}
+        api_response = {"status_code": 200, "body": json.dumps(body)}
+        with (
+            patch.object(client, "_post", return_value=api_response),
+            pytest.raises(LeapmotorPermissionError, match="owns the car"),
+        ):
+            client.get_software_info(self.VEHICLE)
+        client.close()
+
+    def test_other_errors_stay_generic(self) -> None:
+        client = self._client()
+        api_response = {"status_code": 200, "body": json.dumps({"code": 500, "message": "boom"})}
+        with patch.object(client, "_post", return_value=api_response), pytest.raises(LeapmotorApiError) as exc_info:
+            client.get_software_info(self.VEHICLE)
+        assert not isinstance(exc_info.value, LeapmotorPermissionError)
         client.close()
 
 

@@ -208,6 +208,17 @@ class TestAsyncClientMileage:
             assert result == expected
         sync.close()
 
+    def test_get_software_info_delegates(self) -> None:
+        sync = _make_sync_client()
+        async_client = AsyncLeapmotorApiClient(sync)
+        vehicle = _make_vehicle()
+        expected = object()
+        with patch.object(sync, "get_software_info", return_value=expected) as mock:
+            result = asyncio.run(async_client.get_software_info(vehicle))
+            mock.assert_called_once_with(vehicle)
+            assert result is expected
+        sync.close()
+
     def test_get_mileage_energy_history_delegates(self) -> None:
         sync = _make_sync_client()
         async_client = AsyncLeapmotorApiClient(sync)

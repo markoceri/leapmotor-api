@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `get_software_info(vehicle)`, on both clients: the installed software version and the pending OTA update from `/hotspot/fetch`, as a `SoftwareInfo` with `SoftwareVersion` (version, install time, release notes by language, `release_notes_for()`, `download_size`) and `SoftwarePackage` (one per ECU). The information is available only to the account that owns the car; for a shared account the cloud answers `code 40` and the call raises `LeapmotorPermissionError`. Verified on a T03.
+
 ## [0.4.0] - 2026-10-10
 
 ### Fixed

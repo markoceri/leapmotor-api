@@ -76,6 +76,8 @@ from leapmotor_api.models import (
     RemoteActionResult,
     RemoteActionSpec,
     ShareInvitation,
+    SoftwareInfo,
+    SoftwareReleaseNote,
     TirePressure,
     Vehicle,
     VehicleAbility,
@@ -2368,6 +2370,89 @@ class TestMessageList:
     def test_missing_list_key(self) -> None:
         ml = MessageList.from_dict({"count": 0})
         assert ml.messages == []
+
+
+class TestSoftwareInfo:
+    @staticmethod
+    def _notes(language: str, title: str) -> dict[str, Any]:
+        return {"language": language, "data": [{"title": title, "content": f"{title} content"}]}
+
+    def test_pending_update(self) -> None:
+        data: dict[str, Any] = {
+            "currentVersion": {"time": 1766605790000, "generalVersion": "0.00.00", "logJsonMultiLang": []},
+            "newVersion": {
+                "requestVersionId": 268958,
+                "generalVersion": "1.03.12",
+                "state": 1,
+                "logJsonMultiLang": [self._notes("zh-CN", "zh"), self._notes("it-IT", "it")],
+                "updateItemList": [
+                    {
+                        "seq": 23,
+                        "downloadURL": "https://example.invalid/ivi.zip?sig=secret",
+                        "product": "LP-IVI010-AA",
+                        "softversion": "1.03.12",
+                        "softNumber": "20260716",
+                        "fileSize": 1715272438,
+                        "fileName": "LP-IVI020-AC_V1.03.12_R_20260716.zip",
+                        "pyid": "IVI",
+                        "sha256": "db50",
+                    },
+                    {"seq": 16, "product": "LP-EVCC120-AA", "fileSize": 600192, "pyid": "0x7B2"},
+                ],
+            },
+        }
+        info = SoftwareInfo.from_dict(data)
+        assert info.update_available is True
+        assert info.raw is data
+        assert info.current_version is not None
+        assert info.current_version.version == "0.00.00"
+        assert info.current_version.install_datetime == datetime.fromtimestamp(1766605790)  # noqa: DTZ006
+        assert info.current_version.packages == []
+        new = info.new_version
+        assert new is not None
+        assert new.version == "1.03.12"
+        assert new.request_version_id == 268958
+        assert new.state == 1
+        assert new.install_datetime is None
+        assert new.download_size == 1715272438 + 600192
+        assert [p.product for p in new.packages] == ["LP-IVI010-AA", "LP-EVCC120-AA"]
+        assert new.packages[0].ecu_id == "IVI"
+        assert new.packages[0].soft_version == "1.03.12"
+        assert new.packages[0].download_url == "https://example.invalid/ivi.zip?sig=secret"
+        assert "secret" not in repr(new.packages[0])
+        assert new.release_notes_for("it-IT") == [SoftwareReleaseNote(title="it", content="it content")]
+
+    def test_up_to_date(self) -> None:
+        info = SoftwareInfo.from_dict({"currentVersion": {"generalVersion": "3.41.30", "time": 1790224725000}})
+        assert info.update_available is False
+        assert info.new_version is None
+        assert info.current_version is not None
+        assert info.current_version.version == "3.41.30"
+
+    def test_empty(self) -> None:
+        info = SoftwareInfo.from_dict({})
+        assert info.current_version is None
+        assert info.update_available is False
+
+    @pytest.mark.parametrize(
+        ("language", "expected"),
+        [("it-IT", "it"), ("it-CH", "it"), ("fr-FR", "en"), ("xx", "en")],
+    )
+    def test_release_notes_language_fallback(self, language: str, expected: str) -> None:
+        version = SoftwareInfo.from_dict(
+            {"newVersion": {"logJsonMultiLang": [self._notes("zh-CN", "zh"), self._notes("en-US", "en"),
+                                                 self._notes("it-IT", "it")]}}
+        ).new_version  # fmt: skip
+        assert version is not None
+        assert version.release_notes_for(language)[0].title == expected
+
+    def test_release_notes_fall_back_to_first_language(self) -> None:
+        version = SoftwareInfo.from_dict({"newVersion": {"logJsonMultiLang": [self._notes("zh-CN", "zh")]}}).new_version
+        assert version is not None
+        assert version.release_notes_for("it-IT")[0].title == "zh"
+        without_notes = SoftwareInfo.from_dict({"newVersion": {"generalVersion": "1"}}).new_version
+        assert without_notes is not None
+        assert without_notes.release_notes_for("it-IT") == []
 
 
 class TestShareInvitation:

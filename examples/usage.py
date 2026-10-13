@@ -5,6 +5,7 @@ import sys
 from datetime import date, timedelta
 
 from leapmotor_api.client import LeapmotorApiClient
+from leapmotor_api.exceptions import LeapmotorPermissionError
 
 # --- Credentials from environment variables ---
 USERNAME = os.environ.get("LEAPMOTOR_USERNAME", "")
@@ -207,6 +208,28 @@ def main() -> None:
             print(f"    {msg.message}")
             print(f"    Time: {msg.send_datetime}")
             print()
+
+        # --- Software (OTA) ---
+        print("\n" + "=" * 60)
+        print("SOFTWARE")
+        print("=" * 60)
+
+        for vehicle in vehicles:
+            try:
+                software = client.get_software_info(vehicle)
+            except LeapmotorPermissionError:
+                print(f"  {vehicle.vin}: not available (only the owner account sees the software version)")
+                continue
+            current = software.current_version.version if software.current_version else None
+            print(f"  {vehicle.vin}: installed {current}")
+            if software.new_version:
+                new = software.new_version
+                size_mb = new.download_size / 1e6
+                print(f"    Update available: {new.version} ({size_mb:.0f} MB, {len(new.packages)} packages)")
+                for note in new.release_notes_for("en-US"):
+                    print(f"    - {note.title}: {note.content}")
+            else:
+                print("    Up to date")
 
         # --- Charging Daily Detail ---
         print("\n" + "=" * 60)
