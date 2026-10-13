@@ -5,9 +5,11 @@ from __future__ import annotations
 import contextlib
 import json
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import IntEnum, StrEnum
+from pathlib import PurePosixPath
 from typing import Any
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from .const import (
     DEFAULT_APP_VERSION,
@@ -2506,6 +2508,13 @@ class MessageList:
 # ---------------------------------------------------------------------------
 
 
+def _is_plain_file_name(name: str | None) -> bool:
+    """True if *name* can be used as a file name inside a directory, without escaping it."""
+    if not name or name in (".", ".."):
+        return False
+    return not any(c in name for c in ("/", "\\", "\0"))
+
+
 @dataclass(frozen=True, slots=True)
 class SoftwareReleaseNote:
     """One section of the release notes of a software version."""
@@ -2521,7 +2530,12 @@ class SoftwareReleaseNote:
 
 @dataclass(frozen=True, slots=True)
 class SoftwarePackage:
-    """One ECU package of a pending software update (``newVersion.updateItemList[]``)."""
+    """One ECU package of a pending software update (``newVersion.updateItemList[]``).
+
+    The CDN serves the package encrypted, as ``<file_name>.encrypt``: ``md5`` and ``sha256`` do
+    not match the downloaded bytes (presumably they are the hashes of the decrypted file, not
+    verified). ``file_size`` is the size of the served file.
+    """
 
     seq: int | None
     product: str | None  # ECU part code, e.g. ``LP-IVI010-AA``
@@ -2533,13 +2547,49 @@ class SoftwarePackage:
     ecu_id: str | None  # ``pyid``: CAN address (``0x7B2``) or a name (``IVI``)
     md5: str | None
     sha256: str | None
+    cipher_length: int | None = None
+    """``cipherLength``: equal to ``file_size`` for small files, ``1048592`` (1 MiB + 16) for large ones.
+
+    Presumably the length of the encrypted part of the file (not verified).
+    """
     download_url: str | None = field(default=None, repr=False)
     """Signed download link: keep it out of logs."""
+
+    @property
+    def served_file_name(self) -> str | None:
+        """Name of the file the CDN serves (``<file_name>.encrypt``), from the download link.
+
+        None without a link, or when the name is not a plain file name (empty, ``.``, ``..``,
+        or containing a path separator).
+        """
+        if not self.download_url:
+            return None
+        name = unquote(PurePosixPath(urlsplit(self.download_url).path).name)
+        return name if _is_plain_file_name(name) else None
+
+    @property
+    def link_expires_at(self) -> datetime | None:
+        """Expiry of the signed download link (``Expires``), timezone-aware UTC."""
+        if not self.download_url:
+            return None
+        expires = parse_qs(urlsplit(self.download_url).query).get("Expires")
+        if not expires:
+            return None
+        try:
+            return datetime.fromtimestamp(int(expires[0]), tz=UTC)
+        except (ValueError, OverflowError, OSError):
+            return None
+
+    @property
+    def encrypted(self) -> bool:
+        """True if the CDN serves the package encrypted (``.encrypt``)."""
+        return (self.served_file_name or "").endswith(".encrypt")
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SoftwarePackage:
         """Build from one ``updateItemList[]`` item."""
         file_size = _opt_float(data.get("fileSize"))
+        cipher_length = _opt_float(data.get("cipherLength"))
         return cls(
             seq=data.get("seq"),
             product=data.get("product"),
@@ -2551,6 +2601,7 @@ class SoftwarePackage:
             ecu_id=data.get("pyid"),
             md5=data.get("md5"),
             sha256=data.get("sha256"),
+            cipher_length=int(cipher_length) if cipher_length is not None else None,
             download_url=data.get("downloadURL"),
         )
 

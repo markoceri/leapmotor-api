@@ -11,7 +11,10 @@ import asyncio
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    import os
+    from collections.abc import Callable
     from datetime import date, datetime
+    from pathlib import Path
 
     from .client import LeapmotorApiClient
     from .models import (
@@ -22,6 +25,8 @@ if TYPE_CHECKING:
         MileageEnergyHistory,
         ShareInvitation,
         SoftwareInfo,
+        SoftwarePackage,
+        SoftwareVersion,
         Vehicle,
         VehicleStatus,
     )
@@ -78,6 +83,50 @@ class AsyncLeapmotorApiClient:
         for an account the car is shared with.
         """
         return await asyncio.to_thread(self._client.get_software_info, vehicle)
+
+    async def download_software_package(
+        self,
+        package: SoftwarePackage,
+        destination: str | os.PathLike[str],
+        *,
+        resume: bool = True,
+        chunk_size: int = 1024 * 1024,
+        progress: Callable[[int, int | None], None] | None = None,
+    ) -> Path:
+        """Download one OTA package; see :meth:`LeapmotorApiClient.download_software_package`.
+
+        The download runs in a worker thread, and *progress* is called from that thread.
+        """
+        return await asyncio.to_thread(
+            self._client.download_software_package,
+            package,
+            destination,
+            resume=resume,
+            chunk_size=chunk_size,
+            progress=progress,
+        )
+
+    async def download_software_update(
+        self,
+        version: SoftwareVersion,
+        directory: str | os.PathLike[str],
+        *,
+        resume: bool = True,
+        chunk_size: int = 1024 * 1024,
+        progress: Callable[[SoftwarePackage, int, int | None], None] | None = None,
+    ) -> list[Path]:
+        """Download every package of an OTA update; see :meth:`LeapmotorApiClient.download_software_update`.
+
+        The download runs in a worker thread, and *progress* is called from that thread.
+        """
+        return await asyncio.to_thread(
+            self._client.download_software_update,
+            version,
+            directory,
+            resume=resume,
+            chunk_size=chunk_size,
+            progress=progress,
+        )
 
     async def lock_vehicle(self, vin: str) -> dict[str, Any]:
         return await asyncio.to_thread(self._client.lock_vehicle, vin)

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- OTA package download, on both clients. `download_software_package(package, destination)` downloads one package from the Leapmotor CDN; `download_software_update(version, directory)` downloads every package of an update and skips those already complete. The download goes to a `.part` file, resumes with an HTTP `Range` request, checks the size and is renamed once complete. The CDN request carries no login, client certificate or Leapmotor header, always verifies TLS, and the signed link never appears in logs or error messages. Verified on a T03, including a resumed download.
+- `SoftwarePackage.cipher_length` (`cipherLength`), `served_file_name`, `link_expires_at` (timezone-aware UTC) and `encrypted`. The CDN serves the packages encrypted, as `<fileName>.encrypt`: `md5` and `sha256` do not match the downloaded bytes.
+
 ## [0.5.0] - 2026-10-13
 
 ### Added

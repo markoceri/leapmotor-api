@@ -8,13 +8,14 @@ import json
 import logging
 import os
 import tempfile
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 from urllib.parse import parse_qsl
 
 import pytest
+import requests
 
 from leapmotor_api.client import (
     LeapmotorApiClient,
@@ -34,6 +35,8 @@ from leapmotor_api.models import (
     MileageEnergyHistory,
     ShareInvitation,
     SoftwareInfo,
+    SoftwarePackage,
+    SoftwareVersion,
     Vehicle,
 )
 
@@ -956,6 +959,247 @@ class TestSoftwareInfo:
         with patch.object(client, "_post", return_value=api_response), pytest.raises(LeapmotorApiError) as exc_info:
             client.get_software_info(self.VEHICLE)
         assert not isinstance(exc_info.value, LeapmotorPermissionError)
+        client.close()
+
+
+class _FakeCdnResponse:
+    def __init__(self, status: int, body: bytes = b"", headers: dict[str, str] | None = None, fail_after: int = -1):
+        self.status_code = status
+        self.headers = headers or {}
+        self._body = body
+        self._fail_after = fail_after
+
+    def __enter__(self) -> _FakeCdnResponse:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        return None
+
+    def iter_content(self, chunk_size: int = 1) -> Any:
+        for i in range(0, len(self._body), chunk_size):
+            if 0 <= self._fail_after <= i:
+                raise requests.ConnectionError("boom https://ota-cdn.example/f?Signature=SECRET")
+            yield self._body[i : i + chunk_size]
+
+
+class _FakeCdnSession:
+    """Stands in for ``requests.Session`` in the client module: replays responses, records requests."""
+
+    def __init__(self, *responses: _FakeCdnResponse | Exception):
+        self.responses = list(responses)
+        self.calls: list[dict[str, Any]] = []
+
+    def __call__(self) -> _FakeCdnSession:
+        return self
+
+    def __enter__(self) -> _FakeCdnSession:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        return None
+
+    def get(self, url: str, **kwargs: Any) -> _FakeCdnResponse:
+        self.calls.append({"url": url, **kwargs})
+        response = self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+
+class TestDownloadSoftwarePackage:
+    NAME = "LP-VCU020-AD_V1.01.16_R_20260114.bin"
+    BODY = bytes(range(256)) * 4
+
+    def _package(
+        self, *, expires: int = 4102444800, size: int | None = None, url: str | None = None
+    ) -> SoftwarePackage:
+        return SoftwarePackage.from_dict(
+            {
+                "fileName": self.NAME,
+                "fileSize": len(self.BODY) if size is None else size,
+                "downloadURL": url
+                or f"https://ota-cdn.example/p/{self.NAME}.encrypt?Expires={expires}&Signature=SECRET&Key-Pair-Id=K",
+            }
+        )
+
+    def _download(
+        self, tmp_path: Path, cdn: _FakeCdnSession, package: SoftwarePackage | None = None, **kw: Any
+    ) -> Path:
+        client = _make_client(verify_ssl=False)
+        try:
+            with (
+                patch("leapmotor_api.client.requests.Session", cdn),
+                patch.object(client.session, "get") as api_get,
+                patch.object(client.session, "post") as api_post,
+            ):
+                return client.download_software_package(package or self._package(), tmp_path, chunk_size=100, **kw)
+        finally:
+            api_get.assert_not_called()
+            api_post.assert_not_called()
+            client.close()
+
+    def test_fresh_download(self, tmp_path: Path) -> None:
+        cdn = _FakeCdnSession(_FakeCdnResponse(200, self.BODY, {"Content-Length": str(len(self.BODY))}))
+        seen: list[tuple[int, int | None]] = []
+        result = self._download(tmp_path, cdn, progress=lambda done, total: seen.append((done, total)))
+        assert result == tmp_path / f"{self.NAME}.encrypt"
+        assert result.read_bytes() == self.BODY
+        assert not (tmp_path / f"{self.NAME}.encrypt.part").exists()
+        call = cdn.calls[0]
+        # Plain CDN request: TLS verified even with verify_ssl=False, no client cert, no Leapmotor auth.
+        assert call["verify"] is True
+        assert "cert" not in call
+        assert call["headers"] == {"Accept-Encoding": "identity"}
+        assert call["stream"] is True
+        assert [done for done, _ in seen] == sorted({done for done, _ in seen})
+        assert seen[-1] == (len(self.BODY), len(self.BODY))
+
+    def test_destination_file_path(self, tmp_path: Path) -> None:
+        cdn = _FakeCdnSession(_FakeCdnResponse(200, self.BODY))
+        client = _make_client()
+        with patch("leapmotor_api.client.requests.Session", cdn):
+            result = client.download_software_package(self._package(), tmp_path / "custom.bin")
+        client.close()
+        assert result == tmp_path / "custom.bin"
+        assert result.read_bytes() == self.BODY
+
+    def test_resume_with_206(self, tmp_path: Path) -> None:
+        (tmp_path / f"{self.NAME}.encrypt.part").write_bytes(self.BODY[:300])
+        rest = self.BODY[300:]
+        cdn = _FakeCdnSession(
+            _FakeCdnResponse(206, rest, {"Content-Range": f"bytes 300-{len(self.BODY) - 1}/{len(self.BODY)}"})
+        )
+        result = self._download(tmp_path, cdn)
+        assert cdn.calls[0]["headers"]["Range"] == "bytes=300-"
+        assert result.read_bytes() == self.BODY
+
+    def test_server_ignoring_range_restarts(self, tmp_path: Path) -> None:
+        (tmp_path / f"{self.NAME}.encrypt.part").write_bytes(b"garbage")
+        cdn = _FakeCdnSession(_FakeCdnResponse(200, self.BODY, {"Content-Length": str(len(self.BODY))}))
+        assert self._download(tmp_path, cdn).read_bytes() == self.BODY
+
+    def test_416_with_complete_part_renames(self, tmp_path: Path) -> None:
+        (tmp_path / f"{self.NAME}.encrypt.part").write_bytes(self.BODY)
+        cdn = _FakeCdnSession(_FakeCdnResponse(416, headers={"Content-Range": f"bytes */{len(self.BODY)}"}))
+        assert self._download(tmp_path, cdn).read_bytes() == self.BODY
+        assert len(cdn.calls) == 1
+
+    def test_416_with_mismatching_part_restarts_once(self, tmp_path: Path) -> None:
+        (tmp_path / f"{self.NAME}.encrypt.part").write_bytes(self.BODY + b"extra")
+        cdn = _FakeCdnSession(
+            _FakeCdnResponse(416, headers={"Content-Range": f"bytes */{len(self.BODY)}"}),
+            _FakeCdnResponse(200, self.BODY, {"Content-Length": str(len(self.BODY))}),
+        )
+        assert self._download(tmp_path, cdn).read_bytes() == self.BODY
+        assert "Range" not in cdn.calls[1]["headers"]
+
+    def test_resume_false_discards_part(self, tmp_path: Path) -> None:
+        (tmp_path / f"{self.NAME}.encrypt.part").write_bytes(self.BODY[:300])
+        cdn = _FakeCdnSession(_FakeCdnResponse(200, self.BODY))
+        assert self._download(tmp_path, cdn, resume=False).read_bytes() == self.BODY
+        assert "Range" not in cdn.calls[0]["headers"]
+
+    def test_403_has_no_secret(self, tmp_path: Path) -> None:
+        cdn = _FakeCdnSession(_FakeCdnResponse(403))
+        with pytest.raises(LeapmotorApiError, match="get_software_info") as exc_info:
+            self._download(tmp_path, cdn)
+        assert "SECRET" not in str(exc_info.value)
+        assert "ota-cdn" not in str(exc_info.value)
+
+    def test_other_status(self, tmp_path: Path) -> None:
+        with pytest.raises(LeapmotorApiError, match="HTTP 500"):
+            self._download(tmp_path, _FakeCdnSession(_FakeCdnResponse(500)))
+
+    def test_expired_link_makes_no_request(self, tmp_path: Path) -> None:
+        cdn = _FakeCdnSession()
+        expired = int((datetime.now(UTC) - timedelta(minutes=1)).timestamp())
+        with pytest.raises(LeapmotorApiError, match="expired"):
+            self._download(tmp_path, cdn, self._package(expires=expired))
+        assert cdn.calls == []
+
+    def test_incomplete_download_keeps_part(self, tmp_path: Path) -> None:
+        cdn = _FakeCdnSession(_FakeCdnResponse(200, self.BODY[:500], {"Content-Length": str(len(self.BODY))}))
+        with pytest.raises(LeapmotorApiError, match="incomplete"):
+            self._download(tmp_path, cdn)
+        assert (tmp_path / f"{self.NAME}.encrypt.part").read_bytes() == self.BODY[:500]
+        assert not (tmp_path / f"{self.NAME}.encrypt").exists()
+
+    def test_network_error_has_no_secret_and_keeps_part(self, tmp_path: Path) -> None:
+        cdn = _FakeCdnSession(_FakeCdnResponse(200, self.BODY, fail_after=300))
+        with pytest.raises(LeapmotorApiError, match="ConnectionError") as exc_info:
+            self._download(tmp_path, cdn)
+        assert "SECRET" not in str(exc_info.value)
+        assert exc_info.value.__cause__ is None
+        assert exc_info.value.__suppress_context__ is True
+        assert (tmp_path / f"{self.NAME}.encrypt.part").read_bytes() == self.BODY[:300]
+
+    def test_progress_exception_propagates_and_resume_completes(self, tmp_path: Path) -> None:
+        class StopDownloadError(Exception):
+            pass
+
+        def stop_halfway(done: int, total: int | None) -> None:
+            if done >= 500:
+                raise StopDownloadError
+
+        first = _FakeCdnSession(_FakeCdnResponse(200, self.BODY, {"Content-Length": str(len(self.BODY))}))
+        with pytest.raises(StopDownloadError):
+            self._download(tmp_path, first, progress=stop_halfway)
+        part = tmp_path / f"{self.NAME}.encrypt.part"
+        assert part.stat().st_size == 500
+        second = _FakeCdnSession(
+            _FakeCdnResponse(
+                206, self.BODY[500:], {"Content-Range": f"bytes 500-{len(self.BODY) - 1}/{len(self.BODY)}"}
+            )
+        )
+        assert self._download(tmp_path, second).read_bytes() == self.BODY
+        assert second.calls[0]["headers"]["Range"] == "bytes=500-"
+
+    def test_size_differing_from_file_size_warns(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+        cdn = _FakeCdnSession(_FakeCdnResponse(200, self.BODY))
+        with caplog.at_level(logging.WARNING, logger="leapmotor_api.client"):
+            self._download(tmp_path, cdn, self._package(size=1))
+        assert "declares 1" in caplog.text
+        assert "SECRET" not in caplog.text
+
+    def test_missing_link(self, tmp_path: Path) -> None:
+        package = SoftwarePackage.from_dict({"fileName": self.NAME})
+        with pytest.raises(ValueError, match="no download link"):
+            self._download(tmp_path, _FakeCdnSession(), package)
+
+    def test_unsafe_name_into_directory(self, tmp_path: Path) -> None:
+        package = SoftwarePackage.from_dict({"fileName": "../evil.bin", "downloadURL": "https://ota-cdn.example/a/.."})
+        with pytest.raises(ValueError, match="file name"):
+            self._download(tmp_path, _FakeCdnSession(), package)
+
+
+class TestDownloadSoftwareUpdate:
+    def _version(self) -> SoftwareVersion:
+        def item(name: str, size: int) -> dict[str, Any]:
+            return {"fileName": name, "fileSize": size, "downloadURL": f"https://ota-cdn.example/p/{name}.encrypt"}
+
+        return SoftwareVersion.from_dict(
+            {"generalVersion": "1.03.12", "updateItemList": [item("a.bin", 3), item("b.bin", 2)]}
+        )
+
+    def test_downloads_all_and_skips_complete(self, tmp_path: Path) -> None:
+        (tmp_path / "a.bin.encrypt").write_bytes(b"AAA")
+        cdn = _FakeCdnSession(_FakeCdnResponse(200, b"BB", {"Content-Length": "2"}))
+        seen: list[tuple[str | None, int, int | None]] = []
+        client = _make_client()
+        with patch("leapmotor_api.client.requests.Session", cdn):
+            files = client.download_software_update(
+                self._version(), tmp_path, progress=lambda p, done, total: seen.append((p.file_name, done, total))
+            )
+        client.close()
+        assert files == [tmp_path / "a.bin.encrypt", tmp_path / "b.bin.encrypt"]
+        assert (tmp_path / "b.bin.encrypt").read_bytes() == b"BB"
+        assert len(cdn.calls) == 1
+        assert seen == [("a.bin", 3, 3), ("b.bin", 2, 2)]
+
+    def test_directory_must_exist(self, tmp_path: Path) -> None:
+        client = _make_client()
+        with pytest.raises(ValueError, match="existing directory"):
+            client.download_software_update(self._version(), tmp_path / "missing")
         client.close()
 
 

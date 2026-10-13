@@ -223,6 +223,27 @@ else:
 
 Each `SoftwarePackage` carries a signed `download_url`; it is kept out of `repr()`, keep it out of logs too.
 
+### Downloading the packages
+
+The packages can be downloaded from the Leapmotor CDN, one at a time or all together. The CDN serves them **encrypted** (`served_file_name` ends with `.encrypt`): they cannot be installed by hand, and `md5` / `sha256` do not match the downloaded bytes, so only the size is checked. An interrupted download resumes from the `.part` file on the next call.
+
+```python
+from pathlib import Path
+
+new = client.get_software_info(vehicle).new_version
+target = Path("ota") / new.version
+target.mkdir(parents=True, exist_ok=True)
+
+# One package, with progress
+package = min(new.packages, key=lambda p: p.file_size or 0)
+path = client.download_software_package(package, target, progress=lambda done, total: print(done, total))
+
+# The whole update (~1.9 GB on a T03); packages already complete are skipped
+files = client.download_software_update(new, target)
+```
+
+The link expires (`package.link_expires_at`); call `get_software_info()` again for a fresh one. Downloading the packages does not start the update on the car.
+
 ## Remote Control
 
 Remote actions require the vehicle PIN (`operation_password`):

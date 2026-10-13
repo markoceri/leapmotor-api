@@ -36,6 +36,7 @@ Example scripts for interacting with the Leapmotor API.
 | `LEAPMOTOR_APP_CERT`     | No       | `certs/app_cert.pem`  | Path to the app certificate        |
 | `LEAPMOTOR_APP_KEY`      | No       | `certs/app_key.pem`   | Path to the app key                |
 | `LEAPMOTOR_P12_PASSWORD` | No       | —                     | Account P12 certificate password   |
+| `LEAPMOTOR_DOWNLOAD_DIR` | No       | —                     | `usage.py` downloads the smallest OTA package there (existing directory) |
 
 \* Required for all remote commands except `send-destination`.
 

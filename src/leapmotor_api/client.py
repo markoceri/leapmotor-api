@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import functools
 import json
 import logging
 import os
@@ -121,8 +122,11 @@ from .models import (
     RemoteActionSpec,
     ShareInvitation,
     SoftwareInfo,
+    SoftwarePackage,
+    SoftwareVersion,
     Vehicle,
     VehicleStatus,
+    _is_plain_file_name,
 )
 from .utils import previous_week_window_seconds, validate_window
 
@@ -130,6 +134,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 _T = TypeVar("_T")
+
+# The CDN read can stall for a while on the large packages (the infotainment image is ~1.7 GB).
+_CDN_READ_TIMEOUT = 120
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -518,6 +525,115 @@ class LeapmotorApiClient:
                 ) from exc
             raise
         return SoftwareInfo.from_dict(body.get("data") or {})
+
+    def download_software_package(
+        self,
+        package: SoftwarePackage,
+        destination: str | os.PathLike[str],
+        *,
+        resume: bool = True,
+        chunk_size: int = 1024 * 1024,
+        progress: Callable[[int, int | None], None] | None = None,
+    ) -> Path:
+        """Download one OTA package from the Leapmotor CDN; returns the written file.
+
+        *destination* is a file path, or an existing directory where the file is saved under
+        ``package.served_file_name``. The download goes to ``<file>.part`` and is renamed only
+        once complete; with *resume* an existing ``.part`` is continued with an HTTP ``Range``
+        request. *progress* is called after each chunk with the bytes written so far and the
+        total size (None if unknown); an exception raised by it stops the download and keeps
+        the ``.part``.
+
+        The file is served encrypted: ``package.md5`` / ``sha256`` do not match it and are not
+        checked; only the size is. The link is a signed CDN URL that needs no login and is never
+        included in logs or error messages; when it has expired, call :meth:`get_software_info`
+        again for a fresh one.
+        """
+        if not package.download_url:
+            raise ValueError("The package has no download link")
+        target = Path(destination)
+        if target.is_dir():
+            name = package.served_file_name or package.file_name
+            if not _is_plain_file_name(name):
+                raise ValueError("The package has no usable file name; pass a file path as destination")
+            target = target / str(name)
+        expires = package.link_expires_at
+        if expires is not None and expires <= datetime.now(UTC):
+            raise LeapmotorApiError(
+                f"The download link of {target.name} expired at {expires.isoformat()}; "
+                "call get_software_info() again for a fresh link"
+            )
+        part = target.with_name(target.name + ".part")
+        if not resume:
+            part.unlink(missing_ok=True)
+
+        with requests.Session() as cdn:
+            # A second round only after a 416 on a .part that does not match the file.
+            for _ in range(2):
+                offset = part.stat().st_size if part.exists() else 0
+                headers = {"Accept-Encoding": "identity"}
+                if offset:
+                    headers["Range"] = f"bytes={offset}-"
+                _LOGGER.debug("Downloading OTA package %s from byte %d", target.name, offset)
+                try:
+                    with cdn.get(
+                        package.download_url,
+                        headers=headers,
+                        stream=True,
+                        timeout=(self.timeout, _CDN_READ_TIMEOUT),
+                        verify=True,
+                    ) as resp:
+                        size = _receive_package(resp, part, offset, chunk_size, progress, target.name)
+                except requests.RequestException as exc:
+                    # requests' message carries the signed URL: keep only the exception type.
+                    raise LeapmotorApiError(
+                        f"Download of {target.name} failed ({type(exc).__name__}); call again to resume"
+                    ) from None
+                if size is not None:
+                    break
+            else:
+                raise LeapmotorApiError(f"Download of {target.name} failed: the server rejected the resume range")
+
+        if package.file_size is not None and size != package.file_size:
+            _LOGGER.warning("OTA package %s is %d bytes, the cloud declares %d", target.name, size, package.file_size)
+        part.replace(target)
+        _LOGGER.debug("Downloaded OTA package %s (%d bytes)", target.name, size)
+        return target
+
+    def download_software_update(
+        self,
+        version: SoftwareVersion,
+        directory: str | os.PathLike[str],
+        *,
+        resume: bool = True,
+        chunk_size: int = 1024 * 1024,
+        progress: Callable[[SoftwarePackage, int, int | None], None] | None = None,
+    ) -> list[Path]:
+        """Download every package of an OTA update into *directory*; returns the files.
+
+        *version* is usually ``get_software_info(vehicle).new_version``; *directory* must exist.
+        Each package is saved under its ``served_file_name`` as with
+        :meth:`download_software_package`. A file already there with the declared ``file_size``
+        is not downloaded again. *progress* receives the package as first argument.
+        """
+        folder = Path(directory)
+        if not folder.is_dir():
+            raise ValueError(f"{folder} is not an existing directory")
+        files: list[Path] = []
+        for package in version.packages:
+            name = package.served_file_name or package.file_name
+            done = folder / str(name) if _is_plain_file_name(name) else None
+            if done is not None and done.is_file() and done.stat().st_size == package.file_size:
+                _LOGGER.debug("OTA package %s already downloaded", done.name)
+                if progress is not None:
+                    progress(package, package.file_size, package.file_size)
+                files.append(done)
+                continue
+            on_chunk = functools.partial(progress, package) if progress is not None else None
+            files.append(
+                self.download_software_package(package, folder, resume=resume, chunk_size=chunk_size, progress=on_chunk)
+            )
+        return files
 
     # ------------------------------------------------------------------
     # Public API — Messages
@@ -1803,3 +1919,59 @@ class LeapmotorApiClient:
             "message": message,
             "updated_at": time.time(),
         }
+
+
+def _content_range_total(value: str | None) -> int | None:
+    """TOTAL of a ``Content-Range: bytes N-M/TOTAL`` (or ``bytes */TOTAL``) header."""
+    if not value or "/" not in value:
+        return None
+    try:
+        return int(value.rsplit("/", 1)[1])
+    except ValueError:
+        return None
+
+
+def _receive_package(
+    resp: requests.Response,
+    part: Path,
+    offset: int,
+    chunk_size: int,
+    progress: Callable[[int, int | None], None] | None,
+    name: str,
+) -> int | None:
+    """Write a CDN response to *part*; returns the final size, or None to restart from zero."""
+    status = resp.status_code
+    if status == 416:
+        # The .part is at least as long as the file: complete if it matches the total.
+        total = _content_range_total(resp.headers.get("Content-Range"))
+        if offset and total == offset:
+            return offset
+        part.unlink(missing_ok=True)
+        return None
+    if status == 403:
+        raise LeapmotorApiError(
+            f"Download of {name} refused (HTTP 403): the link expired or was revoked; "
+            "call get_software_info() again for a fresh link"
+        )
+    if status == 206:
+        total = _content_range_total(resp.headers.get("Content-Range"))
+        written, mode = offset, "ab"
+    elif status == 200:
+        # Either a fresh download or a server that ignored the range: start over.
+        length = resp.headers.get("Content-Length")
+        total = int(length) if length and length.isdigit() else None
+        written, mode = 0, "wb"
+    else:
+        raise LeapmotorApiError(f"Download of {name} failed: HTTP {status}")
+
+    with part.open(mode) as fh:
+        for chunk in resp.iter_content(chunk_size=chunk_size):
+            if not chunk:
+                continue
+            fh.write(chunk)
+            written += len(chunk)
+            if progress is not None:
+                progress(written, total)
+    if total is not None and written != total:
+        raise LeapmotorApiError(f"Download of {name} incomplete: {written} of {total} bytes; call again to resume")
+    return written

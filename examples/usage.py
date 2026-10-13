@@ -14,6 +14,7 @@ APP_CERT_PATH = os.environ.get("LEAPMOTOR_APP_CERT", "certs/app_cert.pem")
 APP_KEY_PATH = os.environ.get("LEAPMOTOR_APP_KEY", "certs/app_key.pem")
 OPERATION_PIN = os.environ.get("LEAPMOTOR_PIN", None)
 ACCOUNT_P12_PASSWORD = os.environ.get("LEAPMOTOR_P12_PASSWORD", None)
+DOWNLOAD_DIR = os.environ.get("LEAPMOTOR_DOWNLOAD_DIR", None)
 
 if not USERNAME or not PASSWORD:
     print("ERROR: Set LEAPMOTOR_USERNAME and LEAPMOTOR_PASSWORD environment variables.")
@@ -228,6 +229,14 @@ def main() -> None:
                 print(f"    Update available: {new.version} ({size_mb:.0f} MB, {len(new.packages)} packages)")
                 for note in new.release_notes_for("en-US"):
                     print(f"    - {note.title}: {note.content}")
+                for package in new.packages:
+                    expires = package.link_expires_at
+                    print(f"    {package.served_file_name} ({package.file_size} bytes, link expires {expires})")
+                if DOWNLOAD_DIR:
+                    # Only the smallest package, so that the example never starts a 1.9 GB download.
+                    smallest = min(new.packages, key=lambda p: p.file_size or 0)
+                    path = client.download_software_package(smallest, DOWNLOAD_DIR)
+                    print(f"    Downloaded {path} ({path.stat().st_size} bytes)")
             else:
                 print("    Up to date")
 

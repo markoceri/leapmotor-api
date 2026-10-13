@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from leapmotor_api.async_client import AsyncLeapmotorApiClient
 from leapmotor_api.client import LeapmotorApiClient
-from leapmotor_api.models import MessageList, ShareInvitation, Vehicle, VehicleStatus
+from leapmotor_api.models import MessageList, ShareInvitation, SoftwarePackage, SoftwareVersion, Vehicle, VehicleStatus
 
 
 def _make_cert_files() -> tuple[str, str]:
@@ -216,6 +216,36 @@ class TestAsyncClientMileage:
         with patch.object(sync, "get_software_info", return_value=expected) as mock:
             result = asyncio.run(async_client.get_software_info(vehicle))
             mock.assert_called_once_with(vehicle)
+            assert result is expected
+        sync.close()
+
+    def test_download_software_package_delegates(self) -> None:
+        sync = _make_sync_client()
+        async_client = AsyncLeapmotorApiClient(sync)
+        package = SoftwarePackage.from_dict({})
+        expected = object()
+
+        def progress(done: int, total: int | None) -> None:
+            return None
+
+        with patch.object(sync, "download_software_package", return_value=expected) as mock:
+            result = asyncio.run(
+                async_client.download_software_package(
+                    package, "/tmp/x", resume=False, chunk_size=10, progress=progress
+                )
+            )
+            mock.assert_called_once_with(package, "/tmp/x", resume=False, chunk_size=10, progress=progress)
+            assert result is expected
+        sync.close()
+
+    def test_download_software_update_delegates(self) -> None:
+        sync = _make_sync_client()
+        async_client = AsyncLeapmotorApiClient(sync)
+        version = SoftwareVersion.from_dict({})
+        expected = object()
+        with patch.object(sync, "download_software_update", return_value=expected) as mock:
+            result = asyncio.run(async_client.download_software_update(version, "/tmp/x"))
+            mock.assert_called_once_with(version, "/tmp/x", resume=True, chunk_size=1024 * 1024, progress=None)
             assert result is expected
         sync.close()
 

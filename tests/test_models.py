@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -77,6 +77,7 @@ from leapmotor_api.models import (
     RemoteActionSpec,
     ShareInvitation,
     SoftwareInfo,
+    SoftwarePackage,
     SoftwareReleaseNote,
     TirePressure,
     Vehicle,
@@ -2370,6 +2371,50 @@ class TestMessageList:
     def test_missing_list_key(self) -> None:
         ml = MessageList.from_dict({"count": 0})
         assert ml.messages == []
+
+
+class TestSoftwarePackage:
+    URL = "https://ota-cdn.example/path/LP-VCU020-AD_V1.01.16_R_20260114.bin.encrypt?Expires=1807216871&Signature=x&Key-Pair-Id=y"
+
+    @staticmethod
+    def _package(**data: Any) -> SoftwarePackage:
+        return SoftwarePackage.from_dict({"fileName": "LP-VCU020-AD_V1.01.16_R_20260114.bin", **data})
+
+    def test_link_properties(self) -> None:
+        package = self._package(downloadURL=self.URL, cipherLength=992784)
+        assert package.cipher_length == 992784
+        assert package.served_file_name == "LP-VCU020-AD_V1.01.16_R_20260114.bin.encrypt"
+        assert package.encrypted is True
+        assert package.link_expires_at == datetime(2027, 4, 8, 20, 41, 11, tzinfo=UTC)
+        assert "Signature" not in repr(package)
+        assert "ota-cdn" not in repr(package)
+
+    @pytest.mark.parametrize(("value", "expected"), [("1048592", 1048592), (1048592.0, 1048592), (None, None)])
+    def test_cipher_length_parsing(self, value: Any, expected: int | None) -> None:
+        assert self._package(cipherLength=value).cipher_length == expected
+
+    def test_without_link(self) -> None:
+        package = self._package()
+        assert package.served_file_name is None
+        assert package.link_expires_at is None
+        assert package.encrypted is False
+
+    def test_url_encoded_name(self) -> None:
+        package = self._package(downloadURL="https://ota-cdn.example/a/My%20File.bin.encrypt?Expires=1")
+        assert package.served_file_name == "My File.bin.encrypt"
+
+    def test_plain_file_is_not_encrypted(self) -> None:
+        package = self._package(downloadURL="https://ota-cdn.example/a/file.bin?Expires=1")
+        assert package.served_file_name == "file.bin"
+        assert package.encrypted is False
+
+    @pytest.mark.parametrize("path", ["/a/..", "/a/%2E%2E", "/a/x%2F..%2Fy", "/a/x%5Cy", "/"])
+    def test_unsafe_served_name_is_none(self, path: str) -> None:
+        assert self._package(downloadURL=f"https://ota-cdn.example{path}").served_file_name is None
+
+    @pytest.mark.parametrize("query", ["", "?Signature=x", "?Expires=soon", "?Expires=99999999999999999999"])
+    def test_link_expiry_missing_or_invalid(self, query: str) -> None:
+        assert self._package(downloadURL=f"https://ota-cdn.example/a/f.bin.encrypt{query}").link_expires_at is None
 
 
 class TestSoftwareInfo:

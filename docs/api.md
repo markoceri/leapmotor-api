@@ -480,7 +480,19 @@ Installed software version and the pending OTA update. **Answered only for the a
 | `newVersion.requestVersionId` | `int` | Id of the update campaign |
 | `newVersion.state` | `int` | `1` seen while the update is offered |
 | `newVersion.logJsonMultiLang` | `list` | `[{"language": "it-IT", "data": [{"title", "content"}]}]` |
-| `newVersion.updateItemList` | `list` | One package per ECU: `product`, `softversion`, `softNumber` (build date), `hardware`, `fileName`, `fileSize` (bytes), `pyid` (CAN address or name), `md5`, `sha256`, `sign`, `downloadURL` (signed link) |
+| `newVersion.updateItemList` | `list` | One package per ECU: `seq`, `product`, `softversion`, `softNumber` (build date), `hardware`, `fileName`, `fileSize` (bytes, size of the served file), `cipherLength`, `pyid` (CAN address or name), `md5`, `sha256`, `sign`, `downloadURL` |
+| `updateItemList[].cipherLength` | `int` | Equal to `fileSize` for small files, `1048592` (1 MiB + 16) for large ones; presumably the length of the encrypted part (not verified) |
+| `updateItemList[].sign`, `downloadURL` | `string` | Secrets: a signature and a signed download link. Keep them out of logs |
+
+#### OTA package download
+
+Each `downloadURL` is a signed CloudFront link on `ota-cdn.leapmotor-international.de`, with `Expires` (epoch seconds), `Signature` and `Key-Pair-Id` in the query. The links seen were valid for about 6 months, and every `hotspot/fetch` answer carries them.
+
+- A plain `GET`: no login, no client certificate, no Leapmotor headers. `200`, `application/octet-stream`, `Accept-Ranges: bytes` (`206` on a `Range` request), with `ETag` and `Last-Modified`.
+- The served file is `<fileName>.encrypt`, and its size is `fileSize` (checked on all 10 packages of a T03 update, the 1.7 GB infotainment image included).
+- `md5` and `sha256` do **not** match the downloaded bytes; presumably they are the hashes of the decrypted file (not verified).
+
+Client: `download_software_package(package, destination)` for one package, `download_software_update(version, directory)` for all of them, both resuming an interrupted download.
 
 ### Charging Daily Detail
 
