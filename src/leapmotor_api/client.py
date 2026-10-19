@@ -111,6 +111,7 @@ from .mappings import REMOTE_ACTION_CAR_TYPE_SPECS, REMOTE_ACTION_SPECS
 from .models import (
     CarType,
     ChargeDailyDetailPage,
+    ChargeRecord,
     ConsumptionBreakdown,
     ConsumptionWeeklyRank,
     MessageList,
@@ -207,6 +208,7 @@ class LeapmotorApiClient:
         self.account_p12_password_source: str | None = None
         self.remote_cert_synced = False
         self.last_api_results: dict[str, dict[str, Any]] = {}
+        self._shared_vins: set[str] = set()
         # Status path segments that answered 404 and worked on C10, so later
         # requests go straight to C10 (e.g. {"x99": "c10"}).
         self._status_path_overrides: dict[str, str] = {}
@@ -368,6 +370,7 @@ class LeapmotorApiClient:
                 if not vin:
                     continue
                 vehicles.append(Vehicle.from_dict(data=item, is_shared=is_shared))
+        self._shared_vins = {v.vin for v in vehicles if v.is_shared}
         return vehicles
 
     def get_vehicle_status(self, vehicle: Vehicle) -> VehicleStatus:
@@ -1361,9 +1364,15 @@ class LeapmotorApiClient:
         page_num: int = 1,
         page_size: int = 10,
     ) -> ChargeDailyDetailPage:
-        """Fetch paginated daily charging detail for a vehicle."""
+        """Fetch one page of daily charging detail for a vehicle.
+
+        The cloud returns the charging history only to the account that owns
+        the car. For a shared account it answers ``code 0`` with an empty list;
+        a warning is logged in that case (the vehicle must have been seen in
+        :meth:`get_vehicle_list` on this client).
+        """
         self._ensure_token()
-        return self._retry_on_token_expiry(
+        page: ChargeDailyDetailPage = self._retry_on_token_expiry(
             self._get_charging_daily_detail,
             vin,
             start_time.isoformat(),
@@ -1372,6 +1381,47 @@ class LeapmotorApiClient:
             page_num,
             page_size,
         )
+        if page_num == 1 and not page.records and vin in self._shared_vins:
+            _LOGGER.warning(
+                "Leapmotor charging history for %s is empty and the vehicle is shared with this account "
+                "(is_shared=True). The cloud returns charging records only to the owner account; "
+                "log in with the owner account to get them.",
+                vin,
+            )
+        return page
+
+    def get_all_charging_records(
+        self,
+        vin: str,
+        *,
+        start_time: date,
+        end_time: date,
+        timezone: str = "GMT+00:00",
+        page_size: int = 50,
+        max_pages: int = 100,
+    ) -> list[ChargeRecord]:
+        """Fetch the charging records of all pages, newest first.
+
+        Pages are requested until a page comes back empty or short, or until
+        ``total`` records were read. ``totalPage`` is ignored because the cloud
+        always reports it as ``0``.
+        """
+        if page_size < 1:
+            raise ValueError("page_size must be at least 1")
+        records: list[ChargeRecord] = []
+        for page_num in range(1, max_pages + 1):
+            page = self.get_charging_daily_detail(
+                vin,
+                start_time=start_time,
+                end_time=end_time,
+                timezone=timezone,
+                page_num=page_num,
+                page_size=page_size,
+            )
+            records.extend(page.records)
+            if len(page.records) < page_size or (page.total and len(records) >= page.total):
+                break
+        return records
 
     def _get_charging_daily_detail(
         self, vin: str, start_time: str, end_time: str, timezone: str, page_num: int, page_size: int

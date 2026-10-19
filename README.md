@@ -108,19 +108,22 @@ For raw API data, use `get_vehicle_raw_status()` or access `status.raw`.
 ```python
 from datetime import date, timedelta
 
-result = client.get_charging_daily_detail(
+records = client.get_all_charging_records(
     vehicle.vin,
     start_time=date.today() - timedelta(days=90),
     end_time=date.today(),
     timezone="GMT+01:00",
-    page_size=50,
 )
-for record in result.records:
+for record in records:
     charge_kind = "DC (fast)" if record.is_fast_charge else "AC (normal)"
     print(f"{record.start_datetime} -> {record.end_datetime}  {charge_kind}  {record.energy_kwh} kWh")
 ```
 
-`ChargeRecord` fields: `start_ts`, `end_ts`, `charge_type` (`ChargeType.AC` / `ChargeType.DC`), `energy_kwh`, `longitude`, `latitude`, `timezone`.  
+`get_all_charging_records()` requests page after page until a page comes back empty or short. Use it instead of reading `totalPage`: the cloud reports `totalPage` as `0` even when there are several pages. `get_charging_daily_detail()` returns a single page as a `ChargeDailyDetailPage` with `records` and the overall `total`.
+
+> **Owner account only.** The cloud returns the charging history only to the account that owns the car. For a car shared with your account (`vehicle.is_shared`) it answers `code 0` with an empty list; the client logs a warning in that case.
+
+`ChargeRecord` fields: `start_ts`, `end_ts`, `charge_type` (`ChargeType.AC` / `ChargeType.DC`), `raw_charge_type` (the cloud value, e.g. `"SLOW"`), `energy_kwh`, `longitude`, `latitude`, `timezone`, `earliest_ts`, `latest_ts`.  
 Convenience properties: `start_datetime`, `end_datetime`, `duration_seconds`, `is_fast_charge`.
 
 ## Energy Consumption Statistics

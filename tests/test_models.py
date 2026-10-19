@@ -22,7 +22,10 @@ from leapmotor_api.models import (
     BatteryStatus,
     BoolStatus,
     CarType,
+    ChargeDailyDetailPage,
+    ChargeRecord,
     ChargeState,
+    ChargeType,
     ClimateCircle,
     ClimateMode,
     ClimateOperate,
@@ -2822,3 +2825,47 @@ class TestRemoteActionCtlPilotedParking:
         action = RemoteActionCtlPilotedParking(cmd_content='{"action":"start"}')
         assert action.cmd_id == "350"
         assert action.cmd_content == '{"action":"start"}'
+
+
+class TestChargeRecord:
+    ITEM = {
+        "chargeGunStartTs": 1791783221000,
+        "chargeGunEndTs": 1792006123000,
+        "chargeEarliestTs": 1791783221000,
+        "chargeLatestTs": 1792006123000,
+        "chargeType": "SLOW",
+        "chargeInEnergy": 40.96,
+        "chargeStartLongitude": "7.0",
+        "chargeStartLatitude": "51.0",
+        "zone": "UTC+2",
+    }
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [("SLOW", ChargeType.AC), ("FAST", ChargeType.DC), ("1", ChargeType.AC), ("2", ChargeType.DC)],
+    )
+    def test_charge_type_mapping(self, raw: str, expected: ChargeType) -> None:
+        record = ChargeRecord.from_dict({**self.ITEM, "chargeType": raw})
+        assert record.charge_type == expected
+        assert record.raw_charge_type == raw
+        assert record.is_fast_charge is (expected == ChargeType.DC)
+
+    def test_unknown_charge_type_falls_back_to_ac_and_keeps_raw(self) -> None:
+        record = ChargeRecord.from_dict({**self.ITEM, "chargeType": "SUPER"})
+        assert record.charge_type == ChargeType.AC
+        assert record.raw_charge_type == "SUPER"
+
+    def test_cloud_record(self) -> None:
+        record = ChargeRecord.from_dict(self.ITEM)
+        assert record.energy_kwh == 40.96
+        assert record.timezone == "UTC+2"
+        assert record.earliest_ts == 1791783221000
+        assert record.latest_ts == 1792006123000
+        assert record.duration_seconds == (1792006123000 - 1791783221000) // 1000
+
+    def test_page_reads_total_and_ignores_missing_fields(self) -> None:
+        page = ChargeDailyDetailPage.from_dict({"total": 56, "totalPage": 0, "pageNum": 1, "list": [self.ITEM]})
+        assert page.total == 56
+        assert page.total_page == 0
+        assert len(page.records) == 1
+        assert ChargeDailyDetailPage.from_dict({}).total == 0
