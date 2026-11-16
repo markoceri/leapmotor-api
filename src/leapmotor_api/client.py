@@ -11,7 +11,7 @@ import os
 import tempfile
 import time
 import uuid
-from datetime import UTC, date, datetime  # noqa: TCH003 - used at runtime (.isoformat())
+from datetime import UTC, date, datetime, timedelta  # noqa: TCH003 - used at runtime (.isoformat())
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
 from urllib.parse import quote, urlencode
@@ -20,7 +20,9 @@ import requests
 import urllib3
 
 from .const import (
+    DEFAULT_APP_VERSION_V2,
     DEFAULT_BASE_URL,
+    DEFAULT_GLOBAL_BASE_URL,
     DEFAULT_LANGUAGE,
     DEFAULT_POLICY_ID,
     DEFAULT_TIMEOUT,
@@ -89,13 +91,17 @@ from .crypto import (
     build_consumption_weekly_rank_headers,
     build_login_headers,
     build_operpwd_verify_headers,
+    build_route_login_headers,
     build_remote_ctl_result_headers,
     build_remote_ctl_write_headers,
     build_remote_ctl_write_headers_without_pin,
     build_signed_headers,
+    build_signed_headers_v2,
     derive_account_p12_password,
     derive_session_device_id,
+    parse_access_token_identity,
     derive_sign_key,
+    derive_sign_key_v2,
     encrypt_operate_password,
     load_account_cert_from_p12,
 )
@@ -201,6 +207,14 @@ class LeapmotorApiClient:
         self.sign_ikm: str | None = None
         self.sign_salt: str | None = None
         self.sign_info: str | None = None
+        # v2 signing material (route login): accessToken + signParam.r2/r3.
+        # Used by sign_key_v2 for x-api-signature-version: 2.0 endpoints.
+        self.access_token: str | None = None
+        self.sign_r2: str | None = None
+        self.sign_r3: str | None = None
+        # userId sent alongside the v2 accessToken on charging endpoints (from the
+        # route login; identifies the session that owns signParam.r2/r3).
+        self.v2_user_id: str | None = None
         self.refresh_token: str | None = None
         self.account_cert_file: str | None = None
         self.account_key_file: str | None = None
@@ -239,6 +253,10 @@ class LeapmotorApiClient:
         self.sign_ikm = None
         self.sign_salt = None
         self.sign_info = None
+        self.access_token = None
+        self.sign_r2 = None
+        self.sign_r3 = None
+        self.v2_user_id = None
         self.refresh_token = None
         self.account_p12_password_used = None
         self.account_p12_password_source = None
@@ -261,6 +279,23 @@ class LeapmotorApiClient:
             raise LeapmotorAuthError("No account sign material loaded.")
         return derive_sign_key(self.sign_ikm, self.sign_salt, self.sign_info)
 
+    @property
+    def sign_key_v2(self) -> bytes:
+        """v2 HMAC key (x-api-signature-version: 2.0), XOR of accessToken/r2/r3.
+
+        Requires the route-login material (``access_token`` + ``sign_r2`` +
+        ``sign_r3``). If the current login endpoint does not return these
+        fields, the bot must switch to the route login that does; see
+        PATCH-NOTE-v2-sign.md.
+        """
+        if not self.access_token or self.sign_r2 is None or self.sign_r3 is None:
+            raise LeapmotorAuthError(
+                "No v2 sign material loaded (access_token/signParam.r2/r3). "
+                "The login response did not include the route-login fields; "
+                "see PATCH-NOTE-v2-sign.md."
+            )
+        return derive_sign_key_v2(self.access_token, self.sign_r2, self.sign_r3)
+
     # ------------------------------------------------------------------
     # Public API — Authentication & Data
     # ------------------------------------------------------------------
@@ -268,6 +303,13 @@ class LeapmotorApiClient:
     def login(self) -> None:
         """Login with the static app cert and load the account cert from the response."""
         self._ensure_static_cert_files()
+        # An acct login supersedes any prior route (v2) session on the server, so
+        # drop stale v2 material; the next charging request re-establishes it via
+        # _ensure_v2_session.
+        self.access_token = None
+        self.sign_r2 = None
+        self.sign_r3 = None
+        self.v2_user_id = None
         headers = build_login_headers(
             device_id=self.device_id,
             username=self.username,
@@ -292,6 +334,158 @@ class LeapmotorApiClient:
         self.refresh_token = str(login_data.get("refreshToken") or "")
         self._load_account_cert(login_data)
         self.remote_cert_synced = False
+        # NOTE: this is the legacy acct login used by all v1 endpoints (vehicle
+        # status/position). It does NOT set the v2 sign material. The charging
+        # endpoints obtain that separately via the route login, on demand
+        # (_ensure_v2_session), because the route login SUPERSEDES this session
+        # ("one session per account") and would otherwise break v1.
+
+    def _ensure_v2_session(self) -> None:
+        """Make sure the route-login v2 sign material is loaded.
+
+        The route login replaces the acct session on the server, so it is done
+        lazily — only when a v2 (charging) request needs it — not as part of
+        :meth:`login`. After this, the legacy acct token is invalid; the next v1
+        call re-logs in via :meth:`_retry_on_token_expiry`.
+        """
+        if self.access_token and self.sign_r2 and self.sign_r3 and self.v2_user_id:
+            return
+        self._ensure_static_cert_files()
+        self._route_login()
+        if not (self.access_token and self.sign_r2 and self.sign_r3 and self.v2_user_id):
+            raise LeapmotorAuthError(
+                "Route login did not yield v2 sign material "
+                "(accessToken/signParam.r2/r3/accountId); see the warnings logged above."
+            )
+
+    def _retry_on_v2_expiry(self, func: Callable[..., _T], *args: Any, **kwargs: Any) -> _T:
+        """Call *func*; on a v2 auth/sign failure, redo the route login once."""
+        try:
+            return func(*args, **kwargs)
+        except LeapmotorApiError as exc:
+            msg = str(exc).lower()
+            if not any(k in msg for k in ("token", "sign", "verify", "信息校验")):
+                raise
+            _LOGGER.debug("v2 request failed (%s); redoing route login", exc)
+            self.access_token = None  # force a fresh route login
+            self._ensure_v2_session()
+            return func(*args, **kwargs)
+
+    def _route_login(self) -> None:
+        """Fetch v2 sign material (accessToken + signParam.r2/r3) via the route login.
+
+        POST ``/base/base-user/account/v1/login`` with a JSON body, keyless v2
+        sign (:func:`build_route_login_headers`), static app-cert mTLS. On success
+        populates ``access_token`` / ``sign_r2`` / ``sign_r3`` / ``v2_user_id``,
+        loads the account cert from the route response, and points the
+        carownerservice auth (token/userId/deviceId) at the route session.
+        """
+        self.access_token = None
+        self.sign_r2 = None
+        self.sign_r3 = None
+        self.v2_user_id = None
+
+        body = {
+            "identifier": self.username,
+            "identifierType": "2",
+            "security": self.password,
+        }
+        headers = build_route_login_headers(
+            device_id=self.device_id,
+            body_params=body,
+            language=self.language,
+            version=DEFAULT_APP_VERSION_V2,
+        ).to_dict()
+
+        # Primary gateway first; fall back to the GLOBAL host if it does not route
+        # the /base/base-user path.
+        hosts: list[str] = []
+        for host in (self.base_url, DEFAULT_GLOBAL_BASE_URL):
+            if host and host not in hosts:
+                hosts.append(host)
+
+        last_detail = "no attempt"
+        for host in hosts:
+            url = f"{host.rstrip('/')}/base/base-user/account/v1/login"
+            try:
+                resp = self.session.post(
+                    url,
+                    headers=headers,
+                    json=body,
+                    cert=(self.app_cert_path, self.app_key_path),
+                    verify=self.verify_ssl,
+                    timeout=self.timeout,
+                )
+            except requests.RequestException as exc:
+                last_detail = f"{host}: request failed: {exc}"
+                _LOGGER.debug("Leapmotor route login transport error for %s: %s", host, exc)
+                continue
+
+            try:
+                payload: dict[str, Any] = json.loads(resp.text)
+            except ValueError:
+                last_detail = f"{host}: HTTP {resp.status_code} non-JSON: {resp.text[:160]}"
+                continue
+
+            data_obj = payload.get("data") or {}
+            sign_param = data_obj.get("signParam") or {}
+            r2 = sign_param.get("r2") if isinstance(sign_param, dict) else None
+            r3 = sign_param.get("r3") if isinstance(sign_param, dict) else None
+            access_token = data_obj.get("accessToken")
+
+            if resp.status_code == 200 and payload.get("code") == 0 and r2 and r3 and access_token:
+                self.access_token = str(access_token)
+                self.sign_r2 = str(r2)
+                self.sign_r3 = str(r3)
+                # The carownerservice gateway cross-checks userid (= accountId) and
+                # deviceid against the accessToken. Both live in the token's
+                # user_name claim; use them so token/header/sign agree (verified
+                # against live traffic: userid=accountId, deviceid=token deviceId).
+                token_account_id, token_device_id = parse_access_token_identity(self.access_token)
+                self.v2_user_id = str(
+                    token_account_id or data_obj.get("accountId") or data_obj.get("uid") or ""
+                )
+                if token_device_id:
+                    self.device_id = token_device_id
+                # The carownerservice gateway ties the mTLS account cert to the
+                # token's session. The route login supersedes the legacy acct
+                # session, so the cert loaded from the acct response no longer
+                # matches the accessToken (-> TOKEN_VERIFY_FAILED). Reload the
+                # account cert from the route response and route the carownerservice
+                # auth (token/userId) to the route session too.
+                try:
+                    self._load_account_cert(
+                        {
+                            "base64Cert": data_obj.get("base64Cert", ""),
+                            "id": data_obj.get("accountId"),
+                            "uid": data_obj.get("uid"),
+                        }
+                    )
+                    self.token = self.access_token
+                    self.user_id = self.v2_user_id
+                    self.remote_cert_synced = False
+                except Exception as exc:  # noqa: BLE001
+                    _LOGGER.warning(
+                        "Leapmotor route login: account cert from route response "
+                        "could not be loaded: %s", exc
+                    )
+                _LOGGER.info(
+                    "Leapmotor route login succeeded via %s; v2 sign material loaded.", host
+                )
+                return
+
+            last_detail = (
+                f"{host}: HTTP {resp.status_code} code={payload.get('code')} "
+                f"message={payload.get('message')!r} "
+                f"hasSignParam={bool(r2 and r3)} hasAccessToken={bool(access_token)}"
+            )
+            _LOGGER.warning("Leapmotor route login not usable (%s)", last_detail)
+
+        _LOGGER.warning(
+            "Leapmotor route login failed on all hosts; v2 charging history stays "
+            "unavailable (v1 vehicle status/position unaffected). Last detail: %s",
+            last_detail,
+        )
 
     def token_refresh(self) -> None:
         """Refresh the access token using the stored refresh token.
@@ -333,9 +527,14 @@ class LeapmotorApiClient:
         try:
             return func(*args, **kwargs)
         except LeapmotorApiError as exc:
-            if "token" not in str(exc).lower():
+            # Besides plain token expiry, a v1 call can fail right after a charging
+            # fetch, because the v2 route login superseded this (acct) session on
+            # the server. That surfaces as a token *or* sign/verify error, so a full
+            # re-login recovers it either way.
+            msg = str(exc).lower()
+            if not any(k in msg for k in ("token", "verify", "sign", "信息校验")):
                 raise
-            _LOGGER.debug("Token appears expired, attempting refresh: %s", exc)
+            _LOGGER.debug("Auth/sign check failed, attempting refresh/relogin: %s", exc)
             try:
                 self.token_refresh()
             except LeapmotorApiError:
@@ -1363,6 +1562,7 @@ class LeapmotorApiClient:
         timezone: str = "GMT+00:00",
         page_num: int = 1,
         page_size: int = 10,
+        car_type: str | None = None,
     ) -> ChargeDailyDetailPage:
         """Fetch one page of daily charging detail for a vehicle.
 
@@ -1370,9 +1570,14 @@ class LeapmotorApiClient:
         the car. For a shared account it answers ``code 0`` with an empty list;
         a warning is logged in that case (the vehicle must have been seen in
         :meth:`get_vehicle_list` on this client).
+
+        This endpoint uses the v2 signature (``x-api-signature-version: 2.0``);
+        ``car_type`` (the vehicle model, e.g. ``"B10"``) is sent as the
+        ``cartype`` header. ``timezone`` only sets the day boundaries for the
+        epoch-second window; it is no longer sent to the server.
         """
-        self._ensure_token()
-        page: ChargeDailyDetailPage = self._retry_on_token_expiry(
+        self._ensure_v2_session()
+        page: ChargeDailyDetailPage = self._retry_on_v2_expiry(
             self._get_charging_daily_detail,
             vin,
             start_time.isoformat(),
@@ -1380,6 +1585,7 @@ class LeapmotorApiClient:
             timezone,
             page_num,
             page_size,
+            car_type,
         )
         if page_num == 1 and not page.records and vin in self._shared_vins:
             _LOGGER.warning(
@@ -1423,36 +1629,61 @@ class LeapmotorApiClient:
                 break
         return records
 
+    @staticmethod
+    def _gmt_offset_seconds(timezone: str) -> int:
+        """Parse ``GMT+HH:MM`` / ``GMT-HH:MM`` into an east-positive offset in seconds."""
+        tz = timezone or "GMT+00:00"
+        try:
+            sign = 1 if tz[3] == "+" else -1
+            return sign * (int(tz[4:6]) * 3600 + int(tz[7:9]) * 60)
+        except (IndexError, ValueError):
+            return 0
+
     def _get_charging_daily_detail(
-        self, vin: str, start_time: str, end_time: str, timezone: str, page_num: int, page_size: int
+        self,
+        vin: str,
+        start_time: str,
+        end_time: str,
+        timezone: str,
+        page_num: int,
+        page_size: int,
+        car_type: str | None = None,
     ) -> ChargeDailyDetailPage:
+        # v2 endpoint (x-api-signature-version: 2.0), verified 2026-11-16:
+        #  * startTime/endTime are Unix-epoch-SECONDS strings (local day boundaries),
+        #    NOT ISO dates, and there is NO timeZone field.
+        #  * pageNum/pageSize are strings; their values are part of the signature,
+        #    so the JSON body must send the exact same strings.
+        off = self._gmt_offset_seconds(timezone)
+        start_dt = datetime.fromisoformat(start_time).replace(tzinfo=UTC)
+        end_dt = datetime.fromisoformat(end_time).replace(tzinfo=UTC)
+        start_epoch = int(start_dt.timestamp()) - off  # local 00:00:00 of start day
+        end_epoch = int((end_dt + timedelta(days=1)).timestamp()) - off - 1  # local 23:59:59 of end day
         body_params = {
             "vin": vin,
-            "timeZone": timezone,
-            "startTime": start_time,
-            "endTime": end_time,
+            "startTime": str(start_epoch),
+            "endTime": str(end_epoch),
             "pageNum": str(page_num),
             "pageSize": str(page_size),
         }
-        headers = build_signed_headers(
-            sign_key=self.sign_key,
+        headers = build_signed_headers_v2(
+            sign_key=self.sign_key_v2,
             device_id=self.device_id,
-            language=self.language,
+            carvin=vin,
+            cartype=car_type,
             body_params=body_params,
+            language=self.language,
+            version=DEFAULT_APP_VERSION_V2,
         ).to_dict()
-        headers.update(self._auth_headers())
-        headers["Content-Type"] = "application/json"
+        # v2 endpoints must carry the route-login accessToken as the token header
+        # (NOT the legacy acct token): the gateway uses it to find the session that
+        # owns signParam.r2/r3 and recompute the same sign key. Mismatch -> result:39.
+        headers.update(self._v2_auth_headers())
+        # JSON body must match the signed body_params exactly (same string values).
         response = self._post_json(
             path="/carownerservice/charge/daily/detail/page",
             headers=headers,
-            json_body={
-                "vin": vin,
-                "timeZone": timezone,
-                "startTime": start_time,
-                "endTime": end_time,
-                "pageNum": page_num,
-                "pageSize": page_size,
-            },
+            json_body=dict(body_params),
             cert=self.account_cert,
         )
         body = self._parse_api_body(response["status_code"], response["body"], "charging daily detail")
@@ -1935,6 +2166,22 @@ class LeapmotorApiClient:
         return {
             "userId": self.user_id,
             "token": self.token,
+        }
+
+    def _v2_auth_headers(self) -> dict[str, str]:
+        """Auth headers for v2-signed endpoints (route-login accessToken).
+
+        The sign key is derived from this accessToken; the gateway recomputes it
+        from the session identified by this token header, so the legacy acct
+        token must not be used here.
+        """
+        if not self.access_token or not self.v2_user_id:
+            raise LeapmotorAuthError(
+                "No v2 auth material (route login did not complete)."
+            )
+        return {
+            "userId": self.v2_user_id,
+            "token": self.access_token,
         }
 
     def _parse_api_body(self, status_code: int, body: str, label: str) -> dict[str, Any]:

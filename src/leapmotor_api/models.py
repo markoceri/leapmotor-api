@@ -53,6 +53,14 @@ class ApiRequestHeaders:
     p12_enc_alg: str | None = DEFAULT_P12_ENC_ALG
     content_type: str | None = "application/x-www-form-urlencoded"
 
+    # -- v2 signature headers (x-api-signature-version: 2.0). Not part of the
+    #    sign input; only sent as headers. Set these for v2 endpoints such as
+    #    carownerservice/charge/*. See crypto.derive_sign_key_v2.
+    signature_version: str | None = None  # "2.0"
+    region: str | None = None  # "EU"
+    carvin: str | None = None  # vehicle VIN (header; VIN also goes in the body)
+    cartype: str | None = None  # vehicle model, e.g. "B10"
+
     def to_dict(self) -> dict[str, str]:
         """Convert to a mutable dict with the original API header names."""
         headers: dict[str, str] = {
@@ -68,6 +76,15 @@ class ApiRequestHeaders:
         }
         if self.p12_enc_alg is not None:
             headers["X-P12_ENC_ALG"] = self.p12_enc_alg
+        # v2 signature headers (only emitted when set)
+        if self.signature_version is not None:
+            headers["x-api-signature-version"] = self.signature_version
+        if self.region is not None:
+            headers["x-region"] = self.region
+        if self.carvin is not None:
+            headers["carvin"] = self.carvin
+        if self.cartype is not None:
+            headers["cartype"] = self.cartype
         if self.content_type is not None:
             headers["Content-Type"] = self.content_type
         return headers

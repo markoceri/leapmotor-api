@@ -3,13 +3,30 @@
 from __future__ import annotations
 
 DEFAULT_BASE_URL = "https://appgateway.leapmotor-international.de"
+# Fallback host for the route login / app-global-service (hostType GLOBAL in the
+# app). Used only if the primary gateway does not route the new /base/base-user
+# paths. See client._route_login.
+DEFAULT_GLOBAL_BASE_URL = "https://app-gw-global-master.leapmotor-international.de"
 DEFAULT_APP_VERSION = "1.12.3"
+# App version advertised on the v2-signed endpoints (route login + charging
+# history). The real app 1.18.2 sends this; it is part of the v2 sign input, so
+# it must match what the gateway recomputes against. v1/legacy login keep
+# DEFAULT_APP_VERSION.
+DEFAULT_APP_VERSION_V2 = "1.18.2"
 DEFAULT_SOURCE = "leapmotor"
 DEFAULT_CHANNEL = "1"
 DEFAULT_LANGUAGE = "en-GB"
 DEFAULT_DEVICE_TYPE = "1"
 DEFAULT_P12_ENC_ALG = "1"
 DEFAULT_POLICY_ID = "20260204"
+
+# --- v2 signature (x-api-signature-version: 2.0) ---
+# The real app uses deviceType="android" (not "1") for v2-signed requests, plus
+# the extra headers below. These are only applied by build_signed_headers_v2 so
+# the legacy login/v1 paths keep deviceType="1".
+DEFAULT_DEVICE_TYPE_V2 = "android"
+DEFAULT_REGION = "EU"
+DEFAULT_SIGNATURE_VERSION = "2.0"
 
 DEFAULT_OPERPWD_AES_KEY = "f1cf0c025baec0e2"
 DEFAULT_OPERPWD_AES_IV = "6b6a1fe94e133fd7"
