@@ -8,7 +8,7 @@ import json
 import logging
 import os
 import tempfile
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -1249,3 +1249,99 @@ class TestAcOff:
             "windlevel": "3",
             "wshld": "0",
         }
+
+
+# ---------------------------------------------------------------------------
+# Charging history
+# ---------------------------------------------------------------------------
+
+
+def _charge_item(start_ts: int, charge_type: str = "SLOW", energy: float = 1.0) -> dict[str, Any]:
+    return {
+        "chargeGunStartTs": start_ts,
+        "chargeGunEndTs": start_ts + 60_000,
+        "chargeEarliestTs": start_ts,
+        "chargeLatestTs": start_ts + 60_000,
+        "chargeType": charge_type,
+        "chargeInEnergy": energy,
+        "chargeStartLongitude": "7.0",
+        "chargeStartLatitude": "51.0",
+        "zone": "UTC+2",
+    }
+
+
+def _charge_response(items: list[dict[str, Any]], total: int, page_num: int, page_size: int) -> dict[str, Any]:
+    # The cloud reports totalPage=0 even when there are several pages.
+    data = {"pageNum": page_num, "pageSize": page_size, "totalPage": 0, "total": total, "list": items}
+    return {"status_code": 200, "body": json.dumps({"code": 0, "result": 0, "data": data})}
+
+
+class TestChargingHistory:
+    def _client(self) -> LeapmotorApiClient:
+        client = _make_client()
+        TestWindowedStatisticsEndpoints()._setup_auth(client)
+        return client
+
+    def test_get_all_charging_records_pages_despite_total_page_zero(self) -> None:
+        client = self._client()
+        page1 = [_charge_item(1_000_000 + i) for i in range(3)]
+        page2 = [_charge_item(2_000_000)]
+        responses = [_charge_response(page1, 4, 1, 3), _charge_response(page2, 4, 2, 3)]
+        with patch.object(client, "_post_json", side_effect=responses) as post:
+            records = client.get_all_charging_records(
+                "VIN1", start_time=date(2026, 1, 1), end_time=date(2026, 10, 19), page_size=3
+            )
+        assert len(records) == 4
+        assert [c.kwargs["json_body"]["pageNum"] for c in post.call_args_list] == [1, 2]
+        client.close()
+
+    def test_get_all_charging_records_stops_on_empty_page(self) -> None:
+        client = self._client()
+        page1 = [_charge_item(1_000_000 + i) for i in range(2)]
+        responses = [_charge_response(page1, 0, 1, 2), _charge_response([], 0, 2, 2)]
+        with patch.object(client, "_post_json", side_effect=responses) as post:
+            records = client.get_all_charging_records(
+                "VIN1", start_time=date(2026, 1, 1), end_time=date(2026, 10, 19), page_size=2
+            )
+        assert len(records) == 2
+        assert post.call_count == 2
+        client.close()
+
+    def test_page_exposes_total(self) -> None:
+        client = self._client()
+        with patch.object(client, "_post_json", return_value=_charge_response([_charge_item(1)], 56, 1, 50)):
+            page = client.get_charging_daily_detail("VIN1", start_time=date(2026, 1, 1), end_time=date(2026, 10, 19))
+        assert page.total == 56
+        assert page.total_page == 0
+        client.close()
+
+    def test_empty_history_on_shared_vehicle_warns(self, caplog: pytest.LogCaptureFixture) -> None:
+        client = self._client()
+        client._shared_vins = {"VIN1"}
+        with (
+            patch.object(client, "_post_json", return_value=_charge_response([], 0, 1, 10)),
+            caplog.at_level(logging.WARNING, logger="leapmotor_api.client"),
+        ):
+            client.get_charging_daily_detail("VIN1", start_time=date(2026, 1, 1), end_time=date(2026, 10, 19))
+        assert "is_shared=True" in caplog.text
+        assert "owner account" in caplog.text
+        client.close()
+
+    def test_empty_history_on_owned_vehicle_does_not_warn(self, caplog: pytest.LogCaptureFixture) -> None:
+        client = self._client()
+        with (
+            patch.object(client, "_post_json", return_value=_charge_response([], 0, 1, 10)),
+            caplog.at_level(logging.WARNING, logger="leapmotor_api.client"),
+        ):
+            client.get_charging_daily_detail("VIN1", start_time=date(2026, 1, 1), end_time=date(2026, 10, 19))
+        assert "is_shared" not in caplog.text
+        client.close()
+
+    def test_vehicle_list_remembers_shared_vins(self) -> None:
+        client = self._client()
+        data = {"bindcars": [{"vin": "OWN1", "carType": "B10"}], "sharedcars": [{"vin": "SHR1", "carType": "B10"}]}
+        api_response = {"status_code": 200, "body": json.dumps({"code": 0, "result": 0, "data": data})}
+        with patch.object(client, "_post", return_value=api_response):
+            client.get_vehicle_list()
+        assert client._shared_vins == {"SHR1"}
+        client.close()

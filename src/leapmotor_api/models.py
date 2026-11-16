@@ -53,6 +53,14 @@ class ApiRequestHeaders:
     p12_enc_alg: str | None = DEFAULT_P12_ENC_ALG
     content_type: str | None = "application/x-www-form-urlencoded"
 
+    # -- v2 signature headers (x-api-signature-version: 2.0). Not part of the
+    #    sign input; only sent as headers. Set these for v2 endpoints such as
+    #    carownerservice/charge/*. See crypto.derive_sign_key_v2.
+    signature_version: str | None = None  # "2.0"
+    region: str | None = None  # "EU"
+    carvin: str | None = None  # vehicle VIN (header; VIN also goes in the body)
+    cartype: str | None = None  # vehicle model, e.g. "B10"
+
     def to_dict(self) -> dict[str, str]:
         """Convert to a mutable dict with the original API header names."""
         headers: dict[str, str] = {
@@ -68,6 +76,15 @@ class ApiRequestHeaders:
         }
         if self.p12_enc_alg is not None:
             headers["X-P12_ENC_ALG"] = self.p12_enc_alg
+        # v2 signature headers (only emitted when set)
+        if self.signature_version is not None:
+            headers["x-api-signature-version"] = self.signature_version
+        if self.region is not None:
+            headers["x-region"] = self.region
+        if self.carvin is not None:
+            headers["carvin"] = self.carvin
+        if self.cartype is not None:
+            headers["cartype"] = self.cartype
         if self.content_type is not None:
             headers["Content-Type"] = self.content_type
         return headers
@@ -91,10 +108,26 @@ class ChargeState(IntEnum):
 
 
 class ChargeType(StrEnum):
-    """Charging type codes."""
+    """Charging type codes.
+
+    The charging history endpoint returns ``"SLOW"`` / ``"FAST"`` (verified on
+    a B10); the numeric codes ``"1"`` / ``"2"`` are still accepted.
+    """
 
     AC = "1"
     DC = "2"
+
+    @classmethod
+    def _missing_(cls, value: object) -> ChargeType | None:
+        return _CHARGE_TYPE_ALIASES.get(str(value).strip().upper())
+
+
+_CHARGE_TYPE_ALIASES: dict[str, ChargeType] = {
+    "SLOW": ChargeType.AC,
+    "AC": ChargeType.AC,
+    "FAST": ChargeType.DC,
+    "DC": ChargeType.DC,
+}
 
 
 class CarType(StrEnum):
@@ -2383,6 +2416,9 @@ class ChargeRecord:
     longitude: str | None
     latitude: str | None
     timezone: str | None
+    raw_charge_type: str | None = None
+    earliest_ts: int | None = None
+    latest_ts: int | None = None
 
     @property
     def start_datetime(self) -> datetime | None:
@@ -2411,11 +2447,13 @@ class ChargeRecord:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ChargeRecord:
-        raw_type = str(data.get("chargeType", "1"))
+        raw_type = data.get("chargeType")
         try:
-            charge_type = ChargeType(raw_type)
+            charge_type = ChargeType(str(raw_type if raw_type is not None else "1"))
         except ValueError:
             charge_type = ChargeType.AC
+        earliest = data.get("chargeEarliestTs")
+        latest = data.get("chargeLatestTs")
         return cls(
             start_ts=int(data.get("chargeGunStartTs", 0)),
             end_ts=int(data.get("chargeGunEndTs", 0)),
@@ -2424,19 +2462,43 @@ class ChargeRecord:
             longitude=data.get("chargeStartLongitude"),
             latitude=data.get("chargeStartLatitude"),
             timezone=data.get("zone"),
+            raw_charge_type=str(raw_type) if raw_type is not None else None,
+            earliest_ts=int(earliest) if earliest is not None else None,
+            latest_ts=int(latest) if latest is not None else None,
         )
 
 
 @dataclass(frozen=True, slots=True)
 class ChargeDailyDetailPage:
-    """Paginated charging daily detail response."""
+    """Paginated charging daily detail response.
+
+    ``total`` is the number of records across all pages. The cloud reports
+    ``totalPage`` as ``0`` even when there are several pages, so do not rely on
+    ``total_page``; use :meth:`LeapmotorApiClient.get_all_charging_records`.
+    """
 
     records: list[ChargeRecord]
+    total: int = 0
+    page_num: int | None = None
+    page_size: int | None = None
+    total_page: int | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ChargeDailyDetailPage:
+        def _int(key: str) -> int | None:
+            value = data.get(key)
+            try:
+                return int(value) if value is not None else None
+            except (TypeError, ValueError):
+                return None
+
+        records = [ChargeRecord.from_dict(r) for r in (data.get("list") or [])]
         return cls(
-            records=[ChargeRecord.from_dict(r) for r in (data.get("list") or [])],
+            records=records,
+            total=_int("total") or 0,
+            page_num=_int("pageNum"),
+            page_size=_int("pageSize"),
+            total_page=_int("totalPage"),
         )
 
 

@@ -23,12 +23,16 @@ from cryptography.hazmat.primitives.serialization import pkcs12
 
 from .const import (
     DEFAULT_APP_VERSION,
+    DEFAULT_APP_VERSION_V2,
     DEFAULT_CHANNEL,
     DEFAULT_DEVICE_TYPE,
+    DEFAULT_DEVICE_TYPE_V2,
     DEFAULT_LANGUAGE,
     DEFAULT_OPERPWD_AES_IV,
     DEFAULT_OPERPWD_AES_KEY,
     DEFAULT_POLICY_ID,
+    DEFAULT_REGION,
+    DEFAULT_SIGNATURE_VERSION,
     DEFAULT_SOURCE,
 )
 from .models import ApiRequestHeaders
@@ -188,7 +192,13 @@ def encrypt_operate_password(pin: str, token: str | None) -> str:
 
 
 def derive_sign_key(ikm: str, salt: str, info: str) -> bytes:
-    """Derive the 32-byte HMAC signing key using HKDF-SHA256."""
+    """Derive the 32-byte HMAC signing key using HKDF-SHA256.
+
+    NOTE: Legacy (pre-2.0) derivation from the old
+    ``/carownerservice/oversea/acct/v1/login`` response fields
+    ``signIkm``/``signSalt``/``signInfo``. The gateway's v2 signature
+    (``x-api-signature-version: 2.0``) uses :func:`derive_sign_key_v2` instead.
+    """
     return HKDF(
         algorithm=hashes.SHA256(),
         length=32,
@@ -197,9 +207,81 @@ def derive_sign_key(ikm: str, salt: str, info: str) -> bytes:
     ).derive(ikm.encode("utf-8"))
 
 
+def _b64_std(value: str) -> bytes:
+    """Decode **standard** Base64, tolerating missing padding."""
+    value = value.strip()
+    return base64.b64decode(value + "=" * (-len(value) % 4))
+
+
+def _b64_url(value: str) -> bytes:
+    """Decode **URL-safe** Base64, tolerating missing padding.
+
+    Used for the JWT signature segment, which is base64url and may contain
+    ``-``/``_``. (``base64.b64decode`` without ``validate=True`` would silently
+    *drop* those characters and return too few bytes — the cause of a 30-byte
+    instead of 32-byte v2 key.)
+    """
+    value = value.strip()
+    return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+
+
+def derive_sign_key_v2(access_token: str, r2: str, r3: str) -> bytes:
+    """Derive the v2 HMAC signing key (``x-api-signature-version: 2.0``).
+
+    VERIFIED against live app traffic (2026-11-16): the real app does **not**
+    use HKDF. It XORs three byte strings taken from the (route) login response
+    (``LoginRouteResponseBean.data``):
+
+        a = base64url_decode(access_token.split('.')[2])   # JWT signature bytes (32 B)
+        b = base64_decode(signParam.r2)
+        c = base64_decode(signParam.r3)
+        key = a XOR b XOR c                                 # length = min(len(a,b,c))
+
+    Source: ``com.leapmotor.abroad.utils.http.LoginUtils.calculateSign``
+    (cached as HKDFKey via ``ConfigMmkv.getHKDFKey``). The key is per-login
+    (not account-stable). The resulting ``sign`` is then
+    ``HMAC-SHA256(key, <sorted-by-key value concatenation>)`` via
+    :func:`build_signed_headers` (already the correct algorithm).
+    """
+    a = _b64_url(access_token.split(".")[2])  # JWT signature: base64url
+    b = _b64_std(r2)  # signParam.r2: standard base64
+    c = _b64_std(r3)  # signParam.r3: standard base64
+    length = min(len(a), len(b), len(c))
+    return bytes(a[i] ^ b[i] ^ c[i] for i in range(length))
+
+
 # ---------------------------------------------------------------------------
 # JWT device ID extraction
 # ---------------------------------------------------------------------------
+
+
+def parse_access_token_identity(access_token: str | None) -> tuple[str | None, str | None]:
+    """Extract ``(accountId, deviceId)`` from the v2 accessToken's ``user_name``.
+
+    The v2 accessToken payload carries
+    ``user_name = "accountId:<id>,<n>,deviceId:android_<hex>,password:"`` (verified
+    against live app traffic). The carownerservice gateway cross-checks the
+    request's ``userid`` header (= accountId) and ``deviceid`` (= this deviceId,
+    which is also in the sign) against the token, so both must be taken from here.
+    Returns ``(None, None)`` on any parse error.
+    """
+    if not access_token:
+        return None, None
+    try:
+        payload_b64 = access_token.split(".")[1]
+        payload_b64 += "=" * (-len(payload_b64) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64.encode("ascii")))
+        user_name = str(payload.get("user_name") or "")
+        account_id = device_id = None
+        for part in user_name.split(","):
+            part = part.strip()
+            if part.startswith("accountId:"):
+                account_id = part[len("accountId:") :] or None
+            elif part.startswith("deviceId:"):
+                device_id = part[len("deviceId:") :] or None
+        return account_id, device_id
+    except Exception:  # noqa: BLE001
+        return None, None
 
 
 def derive_session_device_id(token: str | None, fallback_device_id: str) -> str:
@@ -299,6 +381,124 @@ def build_signed_headers(
         timestamp=timestamp,
         sign=hmac.new(sign_key, sign_input.encode("utf-8"), hashlib.sha256).hexdigest(),
         accept_language=language,
+    )
+
+
+def build_route_login_headers(
+    *,
+    device_id: str,
+    body_params: dict[str, str],
+    language: str = DEFAULT_LANGUAGE,
+    version: str = DEFAULT_APP_VERSION_V2,
+) -> ApiRequestHeaders:
+    """Build headers for the v2 route login (``/base/base-user/account/v1/login``).
+
+    App 1.18.2 obtains ``accessToken`` + ``signParam{r2,r3}`` from this endpoint.
+
+    The request is **not** HMAC-signed (the sign key only exists *after* this
+    call). Login/read URLs use the **keyless** variant
+    ``SHA-256(M).toUpperCase()`` where ``M`` is the same v2 message as for the
+    signed endpoints: the VALUES of the 8 header sign-fields plus all body
+    params, sorted alphabetically by key, concatenated without a separator.
+
+    ``body_params`` is the JSON login body, i.e.
+    ``{"identifier": <email>, "identifierType": "2", "security": <password>}`` —
+    its values participate in the sign.
+    """
+    nonce = repr(random.random() * 1e7 + 10000)  # noqa: S311
+    timestamp = str(int(time.time() * 1000))
+
+    sign_fields: dict[str, str] = {
+        "acceptLanguage": language,
+        "channel": DEFAULT_CHANNEL,
+        "deviceId": device_id,
+        "deviceType": DEFAULT_DEVICE_TYPE_V2,
+        "nonce": nonce,
+        "source": DEFAULT_SOURCE,
+        "timestamp": timestamp,
+        "version": version,
+    }
+    sign_fields.update(body_params)
+
+    sign_input = "".join(v for _, v in sorted(sign_fields.items()))
+    return ApiRequestHeaders(
+        nonce=nonce,
+        device_id=device_id,
+        timestamp=timestamp,
+        sign=hashlib.sha256(sign_input.encode("utf-8")).hexdigest().upper(),
+        accept_language=language,
+        version=version,
+        device_type=DEFAULT_DEVICE_TYPE_V2,
+        signature_version=DEFAULT_SIGNATURE_VERSION,
+        region=DEFAULT_REGION,
+        content_type="application/json; charset=utf-8",
+    )
+
+
+def build_signed_headers_v2(
+    *,
+    sign_key: bytes,
+    device_id: str,
+    carvin: str,
+    cartype: str | None = None,
+    body_params: dict[str, str] | None = None,
+    language: str = DEFAULT_LANGUAGE,
+    version: str = DEFAULT_APP_VERSION_V2,
+) -> ApiRequestHeaders:
+    """Build v2-signed headers (``x-api-signature-version: 2.0``).
+
+    VERIFIED against live app traffic (2026-11-16) for
+    ``carownerservice/charge/statistic/days`` and
+    ``carownerservice/charge/daily/detail/page``:
+
+        sign = lower_hex(HMAC-SHA256(sign_key, M))
+        M    = concat of the VALUES of {acceptLanguage, channel, deviceId,
+               deviceType, nonce, source, timestamp, version} + all body_params,
+               sorted alphabetically by key, values only, no separator.
+
+    Differences vs. :func:`build_signed_headers`:
+      * ``sign_key`` must be the v2 key (:func:`derive_sign_key_v2`), not HKDF.
+      * ``deviceType`` is ``android`` (not ``1``).
+      * the VIN is taken from ``body_params['vin']`` (it is part of the body and
+        therefore of the sign); ``carvin``/``cartype`` are only sent as headers.
+      * the extra v2 headers ``x-api-signature-version: 2.0``, ``x-region: EU``,
+        ``carvin``, ``cartype`` are emitted but are NOT part of the sign input.
+
+    Note: body values must already be in the on-the-wire string form the gateway
+    recomputes against — e.g. ``startTime``/``endTime`` as Unix-epoch-**seconds**
+    strings and ``pageNum``/``pageSize`` as strings (no ``timeZone``).
+    """
+    # App builds nonce as String.valueOf(Math.random()*1e7 + 10000) -> "<int>.<frac>".
+    nonce = repr(random.random() * 1e7 + 10000)  # noqa: S311
+    timestamp = str(int(time.time() * 1000))
+
+    sign_fields: dict[str, str] = {
+        "acceptLanguage": language,
+        "channel": DEFAULT_CHANNEL,
+        "deviceId": device_id,
+        "deviceType": DEFAULT_DEVICE_TYPE_V2,
+        "nonce": nonce,
+        "source": DEFAULT_SOURCE,
+        "timestamp": timestamp,
+        "version": version,
+    }
+    if body_params:
+        sign_fields.update(body_params)
+
+    sign_input = "".join(v for _, v in sorted(sign_fields.items()))
+    return ApiRequestHeaders(
+        nonce=nonce,
+        device_id=device_id,
+        timestamp=timestamp,
+        sign=hmac.new(sign_key, sign_input.encode("utf-8"), hashlib.sha256).hexdigest(),
+        accept_language=language,
+        version=version,
+        device_type=DEFAULT_DEVICE_TYPE_V2,
+        signature_version=DEFAULT_SIGNATURE_VERSION,
+        region=DEFAULT_REGION,
+        carvin=carvin,
+        cartype=cartype,
+        content_type="application/json; charset=utf-8",
     )
 
 

@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from .client import LeapmotorApiClient
     from .models import (
         ChargeDailyDetailPage,
+        ChargeRecord,
         ConsumptionBreakdown,
         ConsumptionWeeklyRank,
         MessageList,
@@ -478,4 +479,24 @@ class AsyncLeapmotorApiClient:
             timezone=timezone,
             page_num=page_num,
             page_size=page_size,
+        )
+
+    async def get_all_charging_records(
+        self,
+        vin: str,
+        *,
+        start_time: date,
+        end_time: date,
+        timezone: str = "GMT+00:00",
+        page_size: int = 50,
+        max_pages: int = 100,
+    ) -> list[ChargeRecord]:
+        return await asyncio.to_thread(
+            self._client.get_all_charging_records,
+            vin,
+            start_time=start_time,
+            end_time=end_time,
+            timezone=timezone,
+            page_size=page_size,
+            max_pages=max_pages,
         )

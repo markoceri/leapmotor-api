@@ -519,11 +519,17 @@ Client: `download_software_package(package, destination)` for one package, `down
 |---|---|---|
 | `list[].chargeGunStartTs` | long | Charge start timestamp (epoch ms) |
 | `list[].chargeGunEndTs` | long | Charge end timestamp (epoch ms) |
-| `list[].chargeType` | string | `"1"` = AC (normal), `"2"` = DC (fast) |
+| `pageNum` / `pageSize` | int | Echo of the request |
+| `total` | int | Number of records across all pages |
+| `totalPage` | int | Always `0` (observed on a B10); page until a page comes back empty or short |
+| `list[].chargeType` | string | `"SLOW"` = AC (normal), `"FAST"` = DC (fast); older docs/clients used `"1"` / `"2"` |
+| `list[].chargeEarliestTs` / `list[].chargeLatestTs` | long | Epoch ms; so far identical to the gun timestamps |
 | `list[].chargeInEnergy` | float | Energy charged (kWh) |
 | `list[].chargeStartLongitude` | string | Longitude |
 | `list[].chargeStartLatitude` | string | Latitude |
-| `list[].zone` | string | Timezone (e.g. `"GMT+01:00"`) |
+| `list[].zone` | string | Timezone of the record (e.g. `"UTC+2"`) |
+
+Only the owner account gets records. For a shared car the endpoint answers `code 0`, `total 0` and an empty `list`. The endpoint does not validate `timeZone`: any string, e.g. `"Europe/Berlin"`, is accepted.
 
 ---
 

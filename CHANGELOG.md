@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Charging history: `chargeType` is now mapped from the values the cloud actually sends, `"SLOW"` (AC) and `"FAST"` (DC). The old code expected `"1"` / `"2"` and turned every unknown value into AC, so fast charges were reported as AC. The numeric codes are still accepted, and the raw value is kept in the new `ChargeRecord.raw_charge_type`.
+- Charging history: `ChargeDailyDetailPage` now carries `total`, `page_num`, `page_size` and `total_page`. The cloud always reports `totalPage` as `0`, so callers had no way to tell that more pages exist.
+
+### Added
+- `get_all_charging_records()`, on both clients: reads every page of the charging history until a page comes back empty or short, or `total` is reached.
+- `ChargeRecord.earliest_ts` / `latest_ts` (`chargeEarliestTs` / `chargeLatestTs`).
+- A warning is logged when the charging history of a car shared with the account (`is_shared=True`) comes back empty: the cloud returns it only to the owner account.
+
 ## [0.6.0] - 2026-10-13
 
 ### Added
