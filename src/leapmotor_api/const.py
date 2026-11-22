@@ -11,6 +11,13 @@ DEFAULT_DEVICE_TYPE = "1"
 DEFAULT_P12_ENC_ALG = "1"
 DEFAULT_POLICY_ID = "20260204"
 
+# The Leapmotor app caps the login password input at 16 characters, so an account
+# password is never longer than this and the gateway rejects a longer string with
+# the generic "Incorrect account or password". A password copied from elsewhere
+# (e.g. a password manager) can be longer than what the app actually sent when the
+# account was created; the client truncates to match the app. See client.__init__.
+MAX_PASSWORD_LENGTH = 16
+
 DEFAULT_OPERPWD_AES_KEY = "f1cf0c025baec0e2"
 DEFAULT_OPERPWD_AES_IV = "6b6a1fe94e133fd7"
 
