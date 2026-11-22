@@ -25,6 +25,7 @@ from .const import (
     DEFAULT_POLICY_ID,
     DEFAULT_TIMEOUT,
     KNOWN_ACCOUNT_P12_PASSWORDS,
+    MAX_PASSWORD_LENGTH,
     REMOTE_CTL_AC_OFF,
     REMOTE_CTL_AC_ON,
     REMOTE_CTL_AC_SCHEDULE,
@@ -180,6 +181,20 @@ class LeapmotorApiClient:
         hemisphere_guard: HemisphereGuard | None = None,
     ) -> None:
         self.username = username
+        # The Leapmotor app caps the password input at MAX_PASSWORD_LENGTH (16)
+        # characters, so the account password never exceeds that. A longer value
+        # (e.g. pasted from a password manager) would be sent verbatim and the
+        # gateway rejects it with the generic "Incorrect account or password".
+        # Truncate to match what the app sends.
+        if len(password) > MAX_PASSWORD_LENGTH:
+            _LOGGER.warning(
+                "Password is longer than %d characters; the Leapmotor app caps it "
+                "at %d, so it is truncated to match (otherwise login fails with "
+                "'Incorrect account or password').",
+                MAX_PASSWORD_LENGTH,
+                MAX_PASSWORD_LENGTH,
+            )
+            password = password[:MAX_PASSWORD_LENGTH]
         self.password = password
         self.app_cert_path = str(app_cert_path)
         self.app_key_path = str(app_key_path)

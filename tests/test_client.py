@@ -89,6 +89,23 @@ class TestClientInit:
         assert client.operation_password == "1234"
         client.close()
 
+    def test_password_truncated_to_16(self) -> None:
+        # The app caps the password input at 16 chars; a longer value would be
+        # rejected as "Incorrect account or password", so it is truncated.
+        client = _make_client(password="0123456789ABCDEFGHIJ")  # 20 chars
+        assert client.password == "0123456789ABCDEF"  # first 16
+        client.close()
+
+    def test_password_exactly_16_unchanged(self) -> None:
+        client = _make_client(password="0123456789ABCDEF")  # 16 chars
+        assert client.password == "0123456789ABCDEF"
+        client.close()
+
+    def test_short_password_unchanged(self) -> None:
+        client = _make_client(password="short")
+        assert client.password == "short"
+        client.close()
+
     def test_missing_cert_raises(self) -> None:
         client = _make_client(app_cert_path="/nonexistent/cert.pem")
         with pytest.raises(LeapmotorMissingAppCertError):
